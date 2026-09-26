@@ -13,6 +13,8 @@ No worker may casually widen IDs, rename fields or add dependencies. A change re
 | `getCity(id): CityDefinition` in city registry | A0 with city data from A3/A4 | All authoritative spatial data |
 | `ParisScene({definition, seed, quality})` | A3 | Scenery only, no players / pickups / timers |
 | `GizaScene({definition, seed, quality})` | A4 | Same shape as Paris |
+| `RomeScene` / `SanFranciscoScene` / `BerlinScene` | A8 / A9 / A10 | Same shape as Paris (decision D14) |
+| `getTargetImage(id): {url, alt}` in `src/assets/targetImages.ts` | A1 | Single source of local target artwork; feeds `ObjectiveCardVM.imageUrl`/`imageAlt`, world collectibles and results |
 | `GlobeScene({cities, onSelectCity, interactive})` | A2 | Globe geometry and selectable pins |
 | `TravelDirector({travel, destinationReady, paused, reducedMotion, onCovered, onComplete, onFailure})` | A2 | Calls token-carrying callbacks; no store access |
 | `resolveObjectives(level, definitions): ObjectiveInstance[]` | A6 | Seeded socket choices, validated against city data |
