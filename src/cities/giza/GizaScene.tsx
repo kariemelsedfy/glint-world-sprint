@@ -152,9 +152,9 @@ class Baker {
   }
 
   /** Hard offset drop shadow on the ground, pushed away from the app's sun (+x, +z). */
-  shadow(x: number, z: number, rx: number, rz: number): void {
+  shadow(x: number, z: number, rx: number, rz: number, y = 0): void {
     if (!this.outlines) return;
-    this.place(UNIT_DISC, MAT.shade, [x - rx * 0.22, 0.012, z - rz * 0.22], [rx * 2.2, 0.01, rz * 2.2], [0, 0, 0], false);
+    this.place(UNIT_DISC, MAT.shade, [x - rx * 0.22, y + 0.012, z - rz * 0.22], [rx * 2.2, 0.01, rz * 2.2], [0, 0, 0], false);
   }
 
   bake(): { material: MeshLambertMaterial; geometry: BufferGeometry }[] {
@@ -306,7 +306,7 @@ function bakeMarket(b: Baker, rect: RectXZ, seed: number, low: boolean): void {
       const material = rng.pick(MAT.canopies);
       const goods = rng.pick(MAT.canopies);
       const twist = (rng.next() - 0.5) * 0.4;
-      b.shadow(x, z, 2.4, 1.8);
+      b.shadow(x, z, 2.4, 1.8, 0.3);
       b.begin([x, 0.3, z], [0, twist, 0]);
       b.box(0, 0, 0, 3.2, 1.2, 2, rng.pick([MAT.clay, MAT.clayLight]));
       // Fabric bolts stacked on the counter.
@@ -408,7 +408,7 @@ function bakeVillage(b: Baker, rect: RectXZ, seed: number, low: boolean): void {
       const hd = cellD - 1.4;
       const h = 3 + rng.int(4);
       const wall = rng.pick([MAT.clay, MAT.clayLight, MAT.plaster]);
-      b.shadow(x, z, hw / 2, hd / 2);
+      b.shadow(x, z, hw / 2, hd / 2, 0.3);
       b.box(x, 0.3, z, hw, h, hd, wall);
       // Highlighted flat roof slab and a stepped parapet.
       b.box(x, 0.3 + h, z, hw + 0.2, 0.3, hd + 0.2, MAT.plaster, 0, false);
