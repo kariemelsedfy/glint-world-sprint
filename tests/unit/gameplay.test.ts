@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { CITY_HALF_EXTENT, PLAYER_RADIUS, PLAYER_SPEED } from '@/shared/contracts';
+import { CITY_HALF_EXTENT, PICKUP_RADIUS, PLAYER_RADIUS, PLAYER_SPEED } from '@/shared/contracts';
 import type { CityDefinition } from '@/shared/contracts';
 import { getCity } from '@/cities';
 import { buildCollisionWorld, moveCircle } from '@/game/collision';
 import { TICK_MS, createClockAccumulator } from '@/game/clock';
 import { absorbBlockedVelocity, createMotion, speedOf, stepMotion } from '@/game/movement';
+import { MAX_FRAME_DT, SUBSTEP_DT, clampFrameDt, simulatePlayer } from '@/game/simulate';
+import type { SimulationResult } from '@/game/simulate';
 import { getMoveAxis, resetInput, setTouchAxis } from '@/game/input';
 import { TARGETS } from '@/content/targets';
 import { getTargetImage } from '@/assets/targetImages';
@@ -169,5 +171,62 @@ describe('target image registry', () => {
       expect(seen.has(image.url), `${target.id} shares artwork`).toBe(false);
       seen.add(image.url);
     }
+  });
+});
+
+describe('frame-rate independent simulation', () => {
+  const emptyWorld = buildCollisionWorld(cityWith([]));
+  const fresh = (): SimulationResult => ({ pickup: -1, intendedDx: 0, intendedDz: 0, actualDx: 0, actualDz: 0 });
+
+  function run(frameDt: number, seconds: number, pickups: Array<{ position: [number, number, number] }> = []) {
+    const motion = createMotion();
+    const pos = { x: 0, z: 0 };
+    const out = fresh();
+    let elapsed = 0;
+    let frames = 0;
+    while (elapsed < seconds - 1e-9) {
+      const dt = Math.min(frameDt, seconds - elapsed);
+      simulatePlayer(emptyWorld, motion, pos, 0, 1, dt, pickups, out);
+      elapsed += dt;
+      frames += 1;
+      if (out.pickup >= 0) break;
+    }
+    return { pos, out, frames };
+  }
+
+  it('covers the same ground at 1.7 fps as at 60 fps', () => {
+    const smooth = run(1 / 60, 3);
+    const choppy = run(0.588, 3);
+    expect(choppy.pos.z).toBeCloseTo(smooth.pos.z, 3);
+    expect(smooth.pos.z).toBeGreaterThan(PLAYER_SPEED * 2.5);
+  });
+
+  it('clamps absurd deltas instead of teleporting', () => {
+    expect(clampFrameDt(Number.NaN)).toBe(0);
+    expect(clampFrameDt(-1)).toBe(0);
+    expect(clampFrameDt(30)).toBe(MAX_FRAME_DT);
+    expect(SUBSTEP_DT * PLAYER_SPEED).toBeLessThan(PICKUP_RADIUS);
+  });
+
+  it('collects a pickup lying inside a single long frame instead of stepping over it', () => {
+    // At 11 u/s, a 1 s frame spans 11 units: far more than the 4-unit pickup diameter.
+    const pickups = [{ position: [0, 0, 3] as [number, number, number] }];
+    const motion = createMotion();
+    motion.vz = PLAYER_SPEED;
+    const pos = { x: 0, z: 0 };
+    const out = simulatePlayer(emptyWorld, motion, pos, 0, 1, MAX_FRAME_DT, pickups, fresh());
+    expect(out.pickup).toBe(0);
+    expect(Math.hypot(pos.x, pos.z - 3)).toBeLessThanOrEqual(PICKUP_RADIUS);
+    expect(pos.z).toBeLessThan(3 + PICKUP_RADIUS);
+  });
+
+  it('stops before a wall at 1.7 fps', () => {
+    const world = buildCollisionWorld(cityWith([{ id: 'slab', minX: -5, maxX: 5, minZ: 6, maxZ: 8 }]));
+    const motion = createMotion();
+    const pos = { x: 0, z: 0 };
+    const out = fresh();
+    for (let i = 0; i < 6; i += 1) simulatePlayer(world, motion, pos, 0, 1, 0.588, [], out);
+    expect(pos.z).toBeLessThanOrEqual(6 - R + 1e-6);
+    expect(pos.z).toBeGreaterThan(4);
   });
 });

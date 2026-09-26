@@ -6,20 +6,19 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import type { Group, Mesh } from 'three';
-import { PICKUP_RADIUS, PLAYER_SPEED } from '@/shared/contracts';
-import type { CityDefinition } from '@/shared/contracts';
+import { PLAYER_SPEED } from '@/shared/contracts';
+import type { CityDefinition, ObjectiveInstance } from '@/shared/contracts';
 import { playerTransform, resetPlayerTransform } from '@/shared/playerRef';
-import { buildCollisionWorld, moveCircle } from '@/game/collision';
+import { buildCollisionWorld } from '@/game/collision';
 import { markPickup, pickupPulseStrength } from '@/game/feedback';
 import { getMoveAxis, resetInput } from '@/game/input';
-import { createMotion, resetMotion, speedOf, stepMotion, absorbBlockedVelocity } from '@/game/movement';
+import { createMotion, resetMotion, speedOf, absorbBlockedVelocity } from '@/game/movement';
+import { clampFrameDt, simulatePlayer } from '@/game/simulate';
+import type { SimulationResult } from '@/game/simulate';
 import { flushRunClock } from '@/game/clock';
 import { useRunStore } from '@/state/store';
 
 const STORE_SYNC_MS = 100;
-/** Frame deltas above this (tab switch, hitch) are clamped so one frame never teleports. */
-const MAX_FRAME_DT = 1 / 20;
-const PICKUP_RADIUS_SQ = PICKUP_RADIUS * PICKUP_RADIUS;
 
 export function Player({ definition }: { definition: CityDefinition }) {
   const group = useRef<Group>(null);
@@ -29,6 +28,14 @@ export function Player({ definition }: { definition: CityDefinition }) {
   const motion = useRef(createMotion());
   const sinceSync = useRef(0);
   const wasBlocked = useRef(false);
+  const pickups = useRef<ObjectiveInstance[]>([]);
+  const result = useRef<SimulationResult>({
+    pickup: -1,
+    intendedDx: 0,
+    intendedDz: 0,
+    actualDx: 0,
+    actualDz: 0,
+  });
 
   useEffect(() => {
     resetInput();
@@ -39,10 +46,12 @@ export function Player({ definition }: { definition: CityDefinition }) {
   }, [definition]);
 
   useFrame((frame, rawDelta) => {
-    const dt = Math.min(Math.max(rawDelta, 0), MAX_FRAME_DT);
+    const dt = clampFrameDt(rawDelta);
     const state = useRunStore.getState();
+    const run = state.run;
     const blocked = state.paused || state.phase !== 'city' || state.mapOpen;
     const m = motion.current;
+    let collected: ObjectiveInstance | null = null;
 
     if (blocked) {
       if (!wasBlocked.current) {
@@ -52,18 +61,20 @@ export function Player({ definition }: { definition: CityDefinition }) {
       wasBlocked.current = true;
     } else {
       wasBlocked.current = false;
-      const [axisX, axisZ] = getMoveAxis();
-      stepMotion(m, axisX, axisZ, dt);
-
-      if (m.vx !== 0 || m.vz !== 0) {
-        const intendedDx = m.vx * dt;
-        const intendedDz = m.vz * dt;
-        const [x, z] = moveCircle(world, playerTransform.x, playerTransform.z, intendedDx, intendedDz);
-        absorbBlockedVelocity(m, intendedDx, intendedDz, x - playerTransform.x, z - playerTransform.z);
-        playerTransform.x = x;
-        playerTransform.z = z;
+      const candidates = pickups.current;
+      candidates.length = 0;
+      if (run) {
+        for (const objective of run.objectives) {
+          if (objective.cityId === state.cityId && !run.collected.includes(objective.targetId)) {
+            candidates.push(objective);
+          }
+        }
       }
+      const [axisX, axisZ] = getMoveAxis();
+      const r = simulatePlayer(world, m, playerTransform, axisX, axisZ, dt, candidates, result.current);
+      absorbBlockedVelocity(m, r.intendedDx, r.intendedDz, r.actualDx, r.actualDz);
       playerTransform.headingRad = m.headingRad;
+      if (r.pickup >= 0) collected = candidates[r.pickup] ?? null;
     }
 
     const speed = blocked ? 0 : speedOf(m);
@@ -92,23 +103,14 @@ export function Player({ definition }: { definition: CityDefinition }) {
       state.setPlayerXZ(playerTransform.x, playerTransform.z);
     }
 
-    const run = state.run;
-    if (blocked || !run) return;
-    for (const objective of run.objectives) {
-      if (objective.cityId !== state.cityId) continue;
-      if (run.collected.includes(objective.targetId)) continue;
-      const dx = objective.position[0] - playerTransform.x;
-      const dz = objective.position[2] - playerTransform.z;
-      if (dx * dx + dz * dz > PICKUP_RADIUS_SQ) continue;
-      // The store re-validates against playerXZ, so make sure it sees this frame's position.
-      state.setPlayerXZ(playerTransform.x, playerTransform.z);
-      sinceSync.current = 0;
-      flushRunClock();
-      state.dispatch({ type: 'COLLECT', targetId: objective.targetId, cityId: objective.cityId });
-      if (useRunStore.getState().run?.collected.includes(objective.targetId)) {
-        markPickup(frame.clock.elapsedTime, objective.position[0], objective.position[2]);
-      }
-      break;
+    if (!collected) return;
+    // The store re-validates against playerXZ, so make sure it sees the pickup position.
+    state.setPlayerXZ(playerTransform.x, playerTransform.z);
+    sinceSync.current = 0;
+    flushRunClock();
+    state.dispatch({ type: 'COLLECT', targetId: collected.targetId, cityId: collected.cityId });
+    if (useRunStore.getState().run?.collected.includes(collected.targetId)) {
+      markPickup(frame.clock.elapsedTime, collected.position[0], collected.position[2]);
     }
   });
 
