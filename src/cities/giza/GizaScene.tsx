@@ -271,6 +271,7 @@ function bakePads(b: Baker, definition: CityDefinition): void {
   pad(b, sx, sz, 5, MAT.stoneLight);
   pad(b, sx, sz, 2, MAT.teal);
   for (const socket of definition.sockets) {
+    b.shadow(socket.position[0], socket.position[2], 2.4, 2.4);
     pad(b, socket.position[0], socket.position[2], 2.4, MAT.stoneLight);
     pad(b, socket.position[0], socket.position[2], 1.2, MAT.stoneDark);
   }
@@ -290,6 +291,8 @@ function bakePyramid(b: Baker, rect: RectXZ, height: number, low: boolean): void
   // Highlighted gold pyramidion on the top face.
   b.place(UNIT_PYRAMID, MAT.gold, [cx, height * 0.93, cz], [base * 0.14, height * 0.14, base * 0.14], [0, Math.PI / 4, 0], false);
   if (low) return;
+  // Dark entrance notch on the sun-facing (+z) side so the scale reads at ground level.
+  b.box(cx, 0.5, cz + base / 2 - 1.4, 2, 2.2, 1.6, MAT.ink, 0, false);
   // Stepped stone courses (alternating tones) so the silhouette reads as masonry, plus a shaded plinth.
   for (const [level, material] of [
     [0.18, MAT.stoneLight],
@@ -353,6 +356,15 @@ function bakeSphinx(b: Baker, rect: RectXZ, low: boolean): void {
   b.shadow(cx, cz, w / 2, d / 2);
   b.begin([cx, 0, cz]);
   b.box(0, 0, 0, w, 0.6, d, MAT.stoneDark, 0, false);
+  if (!low) {
+    // Temple pylons at the rear corners of the terrace: a tall vertical frame that reads from afar.
+    for (const px of [-w / 2 + 1.2, w / 2 - 1.2]) {
+      b.shadow(px, -d / 2 + 1.2, 1.1, 1.1, 0.6);
+      b.box(px, 0.6, -d / 2 + 1.2, 2, 7, 2, MAT.stoneLight);
+      b.box(px, 7.6, -d / 2 + 1.2, 2.4, 0.5, 2.4, MAT.gold, 0, false);
+    }
+    b.box(0, 7.2, -d / 2 + 1.2, w - 2.4, 0.6, 1.2, MAT.stoneLight);
+  }
   // torso
   b.box(0, 0.6, (rear + chest) / 2, w * 0.46, 4.4, chest - rear + 2, MAT.sphinx);
   // rear haunches bulge past the torso so the hips read from above
@@ -375,7 +387,7 @@ function bakeSphinx(b: Baker, rect: RectXZ, low: boolean): void {
     b.box(-0.7, 8.4, chest + 1.75, 0.5, 0.4, 0.2, MAT.ink, 0, false);
     b.box(0.7, 8.4, chest + 1.75, 0.5, 0.4, 0.2, MAT.ink, 0, false);
     b.box(0, 5.7, chest + 1.9, 1, 1.5, 0.6, MAT.nemes);
-    b.box(legX + 1.7, 0.6, -d / 2 + 0.8, 1.6, 1, 1, MAT.sphinx);
+    b.box(legX + 1.7, 0.6, -d / 2 + 3.4, 1.6, 1, 1, MAT.sphinx);
   }
   b.end();
 }
@@ -431,6 +443,20 @@ function bakeMarket(b: Baker, rect: RectXZ, seed: number, low: boolean): void {
   }
 }
 
+/** Resting camel (legs folded) in clay tones; a strong Giza signifier from the elevated camera. */
+function bakeCamel(b: Baker, x: number, z: number, turn: number, rng: Rng): void {
+  b.shadow(x, z, 1.9, 1.1);
+  b.begin([x, 0, z], [0, turn, 0]);
+  const coat = rng.pick([MAT.clayLight, MAT.clay, MAT.sphinx]);
+  b.box(0, 0.3, 0, 3, 1.3, 1.4, coat);
+  b.box(0, 0, 0, 3.2, 0.4, 1.8, MAT.stoneDark, 0, false);
+  b.place(UNIT_SPHERE, coat, [0.2, 1.7, 0], [1.4, 1, 1.2]);
+  b.box(1.6, 0.8, 0, 0.6, 1.9, 0.5, coat, 0, false);
+  b.box(2.0, 2.5, 0, 1.1, 0.55, 0.6, coat);
+  b.box(0, 1.1, 0, 1.6, 0.35, 1.5, rng.pick(MAT.canopies), 0, false);
+  b.end();
+}
+
 /** Small cluster of clay pots and amphorae; base sits at y. */
 function bakePots(b: Baker, x: number, y: number, z: number, rng: Rng): void {
   const count = 2 + rng.int(2);
@@ -472,7 +498,20 @@ function bakeOasis(b: Baker, rect: RectXZ, seed: number, low: boolean): void {
   b.box(cx, 0, cz, w, 0.35, d, MAT.stoneLight, 0, false);
   b.place(UNIT_DISC, MAT.stoneDark, [cx, 0.36, cz], [w - 4, 0.1, d - 4], [0, 0, 0], false);
   b.place(UNIT_DISC, MAT.teal, [cx, 0.4, cz], [w - 5, 0.1, d - 5], [0, 0, 0], false);
-  if (!low) b.place(UNIT_DISC, MAT.plaster, [cx + 1, 0.46, cz - 1], [(w - 5) * 0.35, 0.1, (d - 5) * 0.25], [0, 0, 0], false);
+  if (!low) {
+    b.place(UNIT_DISC, MAT.plaster, [cx + 1, 0.46, cz - 1], [(w - 5) * 0.35, 0.1, (d - 5) * 0.25], [0, 0, 0], false);
+    // Reeds along the pool edge and a mud hut with a fabric door in one corner.
+    for (let index = 0; index < 10; index += 1) {
+      const angle = rng.next() * Math.PI * 2;
+      const rx = cx + Math.cos(angle) * (w / 2 - 2.9);
+      const rz = cz + Math.sin(angle) * (d / 2 - 2.9);
+      b.place(UNIT_CYLINDER, MAT.leaf, [rx, 0.35 + 0.7, rz], [0.18, 1.4 + rng.next(), 0.18], [0, 0, (rng.next() - 0.5) * 0.4], false);
+    }
+    b.shadow(rect.minX + 2.2, rect.maxZ - 2.2, 1.4, 1.4, 0.35);
+    b.box(rect.minX + 2.2, 0.35, rect.maxZ - 2.2, 2.6, 2.2, 2.6, MAT.clayLight);
+    b.place(UNIT_SPHERE, MAT.clay, [rect.minX + 2.2, 2.6, rect.maxZ - 2.2], [2.8, 1.4, 2.8]);
+    b.box(rect.minX + 2.2, 0.35, rect.maxZ - 2.2 + 1.3, 0.9, 1.5, 0.12, rng.pick(MAT.canopies), 0, false);
+  }
   const count = low ? 4 : 7;
   for (let index = 0; index < count; index += 1) {
     const angle = (index / count) * Math.PI * 2 + rng.next() * 0.4;
@@ -600,6 +639,13 @@ function scatterIn(circle: Circle, definition: CityDefinition, keepOut: readonly
 
 function bakeDistricts(b: Baker, definition: CityDefinition, seed: number): void {
   const keepOut = keepOutRects(definition);
+  // Wind streaks: long pale sand decals across the open playable sand for surface texture.
+  const wind = createRng(hashSeed(seed, definition.id, 'wind'));
+  const [bx, bz] = centerOf(definition.bounds);
+  const [bw, bd] = sizeOf(definition.bounds);
+  for (const [x, z] of scatterIn({ center: [bx, bz], radius: Math.hypot(bw, bd) / 2 }, definition, keepOut, wind, 40)) {
+    b.place(UNIT_PLANE, MAT.path, [x, 0.022, z], [5 + wind.next() * 7, 0.35, 1], [-Math.PI / 2, 0, 0.5 + wind.next() * 0.3], false);
+  }
   for (const district of definition.districts) {
     const rng = createRng(hashSeed(seed, definition.id, 'district', district.id));
     const circle = district.broadSearch;
@@ -609,6 +655,7 @@ function bakeDistricts(b: Baker, definition: CityDefinition, seed: number): void
         for (const [x, z] of scatterIn(circle, definition, keepOut, rng, 9)) {
           b.place(UNIT_PLANE, rng.pick(MAT.canopies), [x, 0.03, z], [2.2 + rng.next(), 1.4 + rng.next(), 1], [-Math.PI / 2, 0, rng.next() * Math.PI]);
         }
+        for (const [x, z] of scatterIn(circle, definition, keepOut, rng, 3)) bakeCamel(b, x, z, rng.next() * Math.PI * 2, rng);
         for (const [x, z] of scatterIn(circle, definition, keepOut, rng, 8)) {
           const turn = rng.next() * Math.PI;
           b.shadow(x, z, 0.7, 0.7);
@@ -637,6 +684,14 @@ function bakeDistricts(b: Baker, definition: CityDefinition, seed: number): void
         for (const [x, z] of scatterIn(circle, definition, keepOut, rng, 2)) {
           b.shadow(x, z, 0.8, 0.8);
           b.box(x, 0, z, 1.2, 4 + rng.next() * 2, 0.7, MAT.stoneLight, rng.next() * Math.PI);
+        }
+        // Mastaba tombs: low flat-topped benches that mark the plateau as a necropolis.
+        for (const [x, z] of scatterIn(circle, definition, keepOut, rng, 4)) {
+          const turn = (rng.next() - 0.5) * 0.3;
+          b.shadow(x, z, 2, 1.3);
+          b.box(x, 0, z, 3.6, 1.4, 2.2, MAT.stoneDark, turn);
+          b.box(x, 1.4, z, 3, 0.5, 1.7, MAT.stoneLight, turn, false);
+          b.box(x, 0.2, z + 1.1, 0.7, 1, 0.1, MAT.ink, turn, false);
         }
         break;
       }
