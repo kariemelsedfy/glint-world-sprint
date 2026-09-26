@@ -78,6 +78,8 @@ const SEAT_TONES = ['#e3cda6', '#d6bd93'] as const;
 const IVY_TONE = '#4f8a45';
 const FLOWER_TONES = ['#f43fab', '#ffd963', '#ff8a5b'] as const;
 const RAILING_TONE = '#2b2530';
+const CAMPAGNA_TONE = '#cdb98f';
+const HILL_TONES = ['#9fb07a', '#8ea36e'] as const;
 const SHUTTER_TONE = '#3f6b4f';
 const WINDOW_TONE = '#3a2a3f';
 const TRIM_TONE = '#f9ecd6';
@@ -475,8 +477,8 @@ function buildColosseum(landmark: Landmark, quality: Quality, batches: Batches):
       const szp = cz + Math.sin(angle) * (rz - 0.7 - 0.9);
       const y0 = plinthHeight + TIER_HEIGHT;
       batches.boxes.push({ x: sxp, y: y0 + 0.4, z: szp, sx: 1.0, sy: 0.8, sz: 1.0, ry: -angle, color: TRAVERTINE_DARK });
-      batches.boxes.push({ x: sxp, y: y0 + 1.7, z: szp, sx: 0.7, sy: 1.8, sz: 0.5, ry: -angle, color: TRAVERTINE_LIGHT });
-      batches.spheres.push({ x: sxp, y: y0 + 2.85, z: szp, sx: 0.3, sy: 0.32, sz: 0.3, color: TRAVERTINE_LIGHT });
+      batches.boxes.push({ x: sxp, y: y0 + 2.0, z: szp, sx: 1.0, sy: 2.4, sz: 0.7, ry: -angle, color: TRAVERTINE_LIGHT });
+      batches.spheres.push({ x: sxp, y: y0 + 3.5, z: szp, sx: 0.42, sy: 0.45, sz: 0.42, color: TRAVERTINE_LIGHT });
     }
   }
   // Three shallow steps around the plinth so the base reads from ground level.
@@ -725,6 +727,49 @@ function isClearForProps(definition: CityDefinition, x: number, z: number, keepO
   return Math.hypot(definition.spawn[0] - x, definition.spawn[2] - z) >= SOCKET_CLEAR_RADIUS;
 }
 
+/**
+ * Beyond the playable bounds: a wide campagna ground plane, a low travertine parapet exactly on the
+ * bounds line (the movement clamp already stops the player there) and a scatter of cypresses, pines
+ * and distant hills so the camera never sees the world end. Nothing here is inside the walkable area.
+ */
+function buildOutskirts(bounds: RectXZ, rng: Rng, quality: Quality, batches: Batches): void {
+  const reach = 70;
+  batches.flats.push(flatItem(grow(bounds, reach), -0.01, CAMPAGNA_TONE));
+  const wallHeight = 0.9;
+  const parapets: readonly RectXZ[] = [
+    { minX: bounds.minX - 0.6, maxX: bounds.maxX + 0.6, minZ: bounds.maxZ, maxZ: bounds.maxZ + 0.6 },
+    { minX: bounds.minX - 0.6, maxX: bounds.maxX + 0.6, minZ: bounds.minZ - 0.6, maxZ: bounds.minZ },
+    { minX: bounds.minX - 0.6, maxX: bounds.minX, minZ: bounds.minZ, maxZ: bounds.maxZ },
+    { minX: bounds.maxX, maxX: bounds.maxX + 0.6, minZ: bounds.minZ, maxZ: bounds.maxZ },
+  ];
+  for (const rect of parapets) {
+    batches.boxes.push(boxItem(rect, 0, wallHeight, TRAVERTINE_DARK));
+    batches.boxes.push(boxItem(grow(rect, 0.1), wallHeight, 0.2, TRAVERTINE_LIGHT));
+  }
+  const count = quality === 'low' ? 30 : 90;
+  for (let i = 0; i < count; i += 1) {
+    const side = rng.int(4);
+    const along = rng.next();
+    const out = 4 + rng.next() * (reach - 10);
+    const x = side < 2 ? bounds.minX + along * width(bounds) : side === 2 ? bounds.minX - out : bounds.maxX + out;
+    const z = side >= 2 ? bounds.minZ + along * depth(bounds) : side === 0 ? bounds.maxZ + out : bounds.minZ - out;
+    if (rng.next() < 0.6) {
+      cypress(x, z, 6 + rng.next() * 5, rng.pick(CYPRESS_TONES), batches);
+    } else {
+      const trunk = 3 + rng.next() * 2;
+      batches.cylinders.push({ x, y: trunk / 2, z, sx: 0.6, sy: trunk, sz: 0.6, color: TRUNK_TONE });
+      batches.spheres.push({ x, y: trunk + 1.2, z, sx: 3.4, sy: 1.6, sz: 3.4, color: rng.pick(PINE_TONES) });
+    }
+  }
+  for (let i = 0; i < 10; i += 1) {
+    const angle = (i / 10) * Math.PI * 2 + rng.next() * 0.3;
+    const dist = reach + 20 + rng.next() * 20;
+    const x = centerX(bounds) + Math.cos(angle) * (width(bounds) / 2 + dist);
+    const z = centerZ(bounds) + Math.sin(angle) * (depth(bounds) / 2 + dist);
+    batches.cones.push({ x, y: 4, z, sx: 60 + rng.next() * 40, sy: 8 + rng.next() * 6, sz: 60 + rng.next() * 40, color: HILL_TONES[i % 2]! });
+  }
+}
+
 /** Like isClearForProps but allows piazza edges: only the blocker rectangles, roads, sockets and spawn are excluded. */
 function isPropSafe(definition: CityDefinition, x: number, z: number): boolean {
   if (!contains(grow(definition.bounds, -2), x, z)) return false;
@@ -834,6 +879,7 @@ export function RomeScene({ definition, seed, quality }: CitySceneProps) {
     const landmarkIds = new Set(landmarks.map((landmark) => landmark.id));
 
     batches.flats.push(flatItem(bounds, 0, GROUND_TONE));
+    buildOutskirts(bounds, rng, quality, batches);
     if (quality !== 'low') {
       for (const road of roads) {
         for (const strip of sidewalkStrips(road, 1.2)) batches.flats.push(flatItem(strip, 0.016, KERB_TONE));
