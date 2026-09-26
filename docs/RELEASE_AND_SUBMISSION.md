@@ -39,7 +39,7 @@ npm run check:release
 npm run preview
 ```
 
-These commands are planned script names until A0 creates them. The final README must use commands that actually work. Build output is `dist`; `package:itch` creates `release/glint-itch.zip` from its contents and `check:release` verifies it. The package script must fail on missing index/assets and report the archive's SHA-256. Do not put a `dist/` wrapper folder around the entry point.
+These commands are planned script names until A0 creates them. The final README must use commands that actually work. Build output is `dist`; `package:itch` creates `release/glint-world-sprint-itch.zip` from its contents and `check:release` verifies it. The package script must fail on missing index/assets and report the archive's SHA-256. Do not put a `dist/` wrapper folder around the entry point.
 
 Vite config uses `base: './'`; all local resources must resolve relative to the packaged build. Do not test by double-clicking `index.html` under `file://`; use an HTTP preview and then itch's real iframe. No server-only AI Studio code, node_modules, env files or source-only references in the ZIP.
 
