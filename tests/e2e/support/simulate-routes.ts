@@ -1,13 +1,14 @@
 /**
  * Run with vite-node. Walks every objective of every trial from its city spawn with the e2e
- * route planner, driving the game's own movement and collision code at a fixed frame step.
+ * route planner, driving the game's own player simulation (movement, collision, pickup).
  * Catches blocker edits that would leave the browser walker without a path, in seconds.
  */
 import { getCity } from '@/cities';
 import { LEVELS, TARGETS, resolveObjectives } from '@/content';
-import { buildCollisionWorld, moveCircle } from '@/game/collision';
-import { absorbBlockedVelocity, createMotion, stepMotion } from '@/game/movement';
-import { PICKUP_RADIUS } from '@/shared/contracts';
+import { buildCollisionWorld } from '@/game/collision';
+import { absorbBlockedVelocity, createMotion } from '@/game/movement';
+import { simulatePlayer } from '@/game/simulate';
+import type { SimulationResult } from '@/game/simulate';
 import { planRoute } from './game';
 
 const DT = 1 / 30;
@@ -21,17 +22,13 @@ const results = LEVELS.flatMap((level) =>
     const world = buildCollisionWorld(definition);
     const target = [objective.position[0], objective.position[2]] as const;
     const motion = createMotion();
-    let x = definition.spawn[0];
-    let z = definition.spawn[2];
-    let legs = planRoute(objective.cityId, [x, z], target);
+    const position = { x: definition.spawn[0], z: definition.spawn[2] };
+    const out: SimulationResult = { pickup: -1, intendedDx: 0, intendedDz: 0, actualDx: 0, actualDz: 0 };
+    let legs = planRoute(objective.cityId, [position.x, position.z], target);
     let seconds = 0;
     let reached = false;
-    for (; seconds < LIMIT_S; seconds += DT) {
-      if (Math.hypot(x - target[0], z - target[1]) < PICKUP_RADIUS) {
-        reached = true;
-        break;
-      }
-      const along = (axis: 'x' | 'z') => (axis === 'x' ? x : z);
+    for (; seconds < LIMIT_S && !reached; seconds += DT) {
+      const along = (axis: 'x' | 'z') => (axis === 'x' ? position.x : position.z);
       while (legs.length > 1 && Math.abs(legs[0]!.value - along(legs[0]!.axis)) <= LEG_TOLERANCE) legs.shift();
       const leg = legs[0]!;
       const delta = leg.value - along(leg.axis);
@@ -41,16 +38,14 @@ const results = LEVELS.flatMap((level) =>
         if (leg.axis === 'x') axisX = Math.sign(delta);
         else axisZ = Math.sign(delta);
       } else {
-        legs = planRoute(objective.cityId, [x, z], target);
+        legs = planRoute(objective.cityId, [position.x, position.z], target);
       }
-      stepMotion(motion, axisX, axisZ, DT);
-      const dx = motion.vx * DT;
-      const dz = motion.vz * DT;
-      const [nx, nz] = moveCircle(world, x, z, dx, dz);
-      absorbBlockedVelocity(motion, dx, dz, nx - x, nz - z);
-      x = nx;
-      z = nz;
+      simulatePlayer(world, motion, position, axisX, axisZ, DT, [objective], out);
+      absorbBlockedVelocity(motion, out.intendedDx, out.intendedDz, out.actualDx, out.actualDz);
+      reached = out.pickup === 0;
     }
+    const x = position.x;
+    const z = position.z;
     return {
       levelId: level.id,
       cityId: objective.cityId,

@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
+import { MAX_FRAME_DT } from '@/game/simulate';
 import { PICKUP_RADIUS, PLAYER_RADIUS, PLAYER_SPEED } from '@/shared/contracts';
 import type { CityId, LevelId, RectXZ, TargetId } from '@/shared/contracts';
 
@@ -333,8 +334,6 @@ const WALK_DEADLINE_MS = 300_000;
 const WALK_DEADLINE_FACTOR = 4;
 const COLLECT_POLL_MS = 20_000;
 const MAX_HOLD_MS = 8_000;
-/** Mirrors the Player's frame-delta clamp (1/20 s): slower frames move less per wall-clock second. */
-const PLAYER_MAX_FRAME_S = 1 / 20;
 const MIN_PROGRESS = 0.15;
 const MAX_STALLS = 8;
 
@@ -361,7 +360,7 @@ export async function measureFrameMs(page: Page, frames = 6): Promise<number> {
 
 function expectedUnitsPerMs(frameMs: number): number {
   const frameS = Math.max(frameMs, 1) / 1000;
-  return (PLAYER_SPEED * Math.min(frameS, PLAYER_MAX_FRAME_S)) / frameS / 1000;
+  return (PLAYER_SPEED * Math.min(frameS, MAX_FRAME_DT)) / frameS / 1000;
 }
 
 function clamp(value: number, min: number, max: number): number {
