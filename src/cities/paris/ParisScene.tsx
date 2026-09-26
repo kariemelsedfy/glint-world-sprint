@@ -104,6 +104,15 @@ const AWNING_TONES = [HOT_PINK, CYAN, YELLOW] as const;
 const CAFE_TONE = '#fff0e0';
 const TABLE_TONE = CREAM;
 const PYRAMID_TONE = '#9fe4f5';
+const PLANE_TRUNK_TONE = '#d9ccb4';
+const PLANE_LEAF_TONES = ['#8fd97a', '#a3e08a', '#7bcf72'] as const;
+const KIOSK_TONE = '#2f8a6a';
+const BALCONY_TONE = INK;
+const LOUVRE_STONE = '#f9e8d3';
+const LOUVRE_ROOF = '#3f2f66';
+
+type RoofStyle = 'mansard' | 'steep' | 'parapet';
+const ROOF_STYLES: readonly RoofStyle[] = ['mansard', 'mansard', 'steep', 'parapet'];
 
 const ROOF_HEIGHT = 2.4;
 const PLINTH_HEIGHT = 0.8;
@@ -268,6 +277,7 @@ interface FacadeSegment {
   readonly height: number;
   readonly stone: string;
   readonly roof: string;
+  readonly style: RoofStyle;
   /** Faces of the segment that lie on the outer boundary of its parent footprint. */
   readonly outer: RectXZ;
 }
@@ -293,6 +303,7 @@ function splitBlock(blocker: RectXZ, rng: Rng, fixedHeight?: number): FacadeSegm
       height: fixedHeight ?? 7 + rng.int(5),
       stone: rng.pick(STONE_TONES),
       roof: rng.pick(ROOF_TONES),
+      style: rng.pick(ROOF_STYLES),
       outer: blocker,
     });
   }
@@ -303,36 +314,53 @@ function splitBlock(blocker: RectXZ, rng: Rng, fixedHeight?: number): FacadeSegm
 function buildFacades(segments: readonly FacadeSegment[], rng: Rng, quality: Quality, batches: Batches): void {
   const { boxes, frustums, flats } = batches;
   for (const segment of segments) {
-    const { rect, height, stone, roof, outer } = segment;
+    const { rect, height, stone, roof, style, outer } = segment;
     boxes.push(boxItem(rect, 0, height, stone));
-    // Mansard: a square frustum with a flat cap, plus a pale cornice band under the eaves.
     const eaves = grow(rect, 0.35);
-    frustums.push(boxItem(eaves, height, ROOF_HEIGHT, roof));
-    boxes.push({
-      x: centerX(eaves),
-      y: height + ROOF_HEIGHT + 0.12,
-      z: centerZ(eaves),
-      sx: width(eaves) * 0.55 + 0.3,
-      sy: 0.3,
-      sz: depth(eaves) * 0.55 + 0.3,
-      color: roof,
-    });
+    let roofTop = height + ROOF_HEIGHT;
+    if (style === 'parapet') {
+      // Flat roof behind a low parapet, with a small attic box set back from the street.
+      roofTop = height + 0.6;
+      boxes.push(boxItem(eaves, height, 0.6, roof));
+      boxes.push(boxItem(grow(rect, -1.2), height, 1.4, stone));
+      roofTop = height + 1.4;
+    } else if (style === 'steep') {
+      const steep = ROOF_HEIGHT * 1.5;
+      batches.cones.push({ x: centerX(eaves), y: height + steep / 2, z: centerZ(eaves), sx: width(eaves), sy: steep, sz: depth(eaves), color: roof });
+      roofTop = height + steep;
+    } else {
+      // Mansard: a square frustum with a flat cap.
+      frustums.push(boxItem(eaves, height, ROOF_HEIGHT, roof));
+      boxes.push({
+        x: centerX(eaves),
+        y: height + ROOF_HEIGHT + 0.12,
+        z: centerZ(eaves),
+        sx: width(eaves) * 0.55 + 0.3,
+        sy: 0.3,
+        sz: depth(eaves) * 0.55 + 0.3,
+        color: roof,
+      });
+    }
     flats.push(flatItem(shadowOf(rect), 0.008, SHADOW_TONE));
     if (quality === 'low') continue;
     boxes.push(boxItem(grow(rect, 0.08), 0, PLINTH_HEIGHT, PLINTH_TONE));
     boxes.push(boxItem(grow(rect, 0.3), height - 0.5, 0.5, TRIM_TONE));
 
-    const chimneyCount = 1 + rng.int(2);
+    const chimneyCount = style === 'steep' ? 1 : 1 + rng.int(2);
     for (let index = 0; index < chimneyCount; index += 1) {
-      boxes.push({
-        x: rect.minX + 1.5 + rng.next() * Math.max(0.1, width(rect) - 3),
-        y: height + ROOF_HEIGHT + 0.5,
-        z: rect.minZ + 1.5 + rng.next() * Math.max(0.1, depth(rect) - 3),
-        sx: 0.8,
-        sy: 1.4,
-        sz: 0.8,
-        color: CHIMNEY_TONE,
-      });
+      const cx = rect.minX + 1.5 + rng.next() * Math.max(0.1, width(rect) - 3);
+      const cz = rect.minZ + 1.5 + rng.next() * Math.max(0.1, depth(rect) - 3);
+      const chimneyY = style === 'steep' ? height + 1.2 : roofTop - 0.2;
+      boxes.push({ x: cx, y: chimneyY + 0.7, z: cz, sx: 0.8, sy: 1.4, sz: 0.8, color: CHIMNEY_TONE });
+      batches.cylinders.push({ x: cx - 0.2, y: chimneyY + 1.7, z: cz, sx: 0.3, sy: 0.6, sz: 0.3, color: IRON_TONE });
+      batches.cylinders.push({ x: cx + 0.2, y: chimneyY + 1.7, z: cz, sx: 0.3, sy: 0.6, sz: 0.3, color: IRON_TONE });
+    }
+
+    // Haussmann balcony: a continuous ledge with an ink railing on the second floor of the street face.
+    if (rect.maxZ >= outer.maxZ - 0.01 && height >= 8) {
+      const ledgeY = 2.6 + 3;
+      boxes.push({ x: centerX(rect), y: ledgeY, z: rect.maxZ + 0.35, sx: width(rect) - 0.4, sy: 0.18, sz: 0.7, color: TRIM_TONE });
+      boxes.push({ x: centerX(rect), y: ledgeY + 0.5, z: rect.maxZ + 0.66, sx: width(rect) - 0.4, sy: 0.8, sz: 0.08, color: BALCONY_TONE });
     }
 
     // The chase camera always looks toward -Z, so the -Z facade is never on screen: skip its windows.
@@ -425,6 +453,15 @@ function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batc
         const x = horizontal ? road.minX + along : centerX(road) + side * (width(road) / 2 + 0.8);
         const z = horizontal ? centerZ(road) + side * (depth(road) / 2 + 0.8) : road.minZ + along;
         if (!isClearForProps(definition, x, z, false)) continue;
+        // Plane trees alternate with lamps along every avenue: tall pale trunk, broad flat crown.
+        if (Math.round(along / 18) % 2 === 1) {
+          const leaf = rng.pick(PLANE_LEAF_TONES);
+          batches.cylinders.push({ x, y: 1.6, z, sx: 0.5, sy: 3.2, sz: 0.5, color: PLANE_TRUNK_TONE });
+          batches.spheres.push({ x, y: 4.2, z, sx: 2.6, sy: 1.6, sz: 2.6, color: leaf });
+          batches.spheres.push({ x: x + 0.8, y: 4.9, z: z - 0.4, sx: 1.6, sy: 1.2, sz: 1.6, color: leaf });
+          batches.cylinders.push({ x: x + 1.1, y: 0.006, z: z + 0.6, sx: 4.6, sy: 0.012, sz: 4.6, color: SHADOW_TONE });
+          continue;
+        }
         batches.cylinders.push({ x, y: 1.5, z, sx: 0.3, sy: 3.0, sz: 0.3, color: LAMP_POST_TONE });
         batches.boxes.push({ x, y: 0.2, z, sx: 0.8, sy: 0.4, sz: 0.8, color: LAMP_POST_TONE });
         batches.boxes.push({ x, y: 3.3, z, sx: 0.8, sy: 0.8, sz: 0.8, color: LAMP_GLOW_TONE });
@@ -432,14 +469,79 @@ function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batc
       }
     }
   }
+
+  buildKiosks(definition, rng, batches);
+  buildTerraces(definition, rng, batches);
 }
 
-function buildRiver(segments: readonly Blocker[], bridges: readonly RectXZ[], batches: Batches): void {
+/** Green newspaper kiosks on a few plaza corners: hexagonal body, cone roof, yellow finial. */
+function buildKiosks(definition: CityDefinition, rng: Rng, batches: Batches): void {
+  let placed = 0;
+  for (let attempt = 0; attempt < 120 && placed < 5; attempt += 1) {
+    const road = definition.roads[rng.int(definition.roads.length)]!;
+    const horizontal = width(road) >= depth(road);
+    const side = rng.next() < 0.5 ? -1 : 1;
+    const x = horizontal ? road.minX + rng.next() * width(road) : centerX(road) + side * (width(road) / 2 + 2.6);
+    const z = horizontal ? centerZ(road) + side * (depth(road) / 2 + 2.6) : road.minZ + rng.next() * depth(road);
+    if (!isClearForProps(definition, x, z, true)) continue;
+    placed += 1;
+    batches.cylinders.push({ x, y: 1.3, z, sx: 2.2, sy: 2.6, sz: 2.2, color: KIOSK_TONE });
+    batches.cylinders.push({ x, y: 2.7, z, sx: 2.8, sy: 0.2, sz: 2.8, color: INK });
+    batches.cones.push({ x, y: 3.3, z, sx: 2.9, sy: 1.0, sz: 2.9, color: KIOSK_TONE });
+    batches.spheres.push({ x, y: 3.95, z, sx: 0.3, sy: 0.3, sz: 0.3, color: YELLOW });
+    batches.boxes.push({ x, y: 1.4, z: z + 1.08, sx: 1.2, sy: 1.2, sz: 0.1, color: YELLOW });
+    batches.cylinders.push({ x: x + 1.0, y: 0.006, z: z + 0.6, sx: 3.6, sy: 0.012, sz: 3.6, color: SHADOW_TONE });
+  }
+}
+
+/** Pavement terraces (awning + tables) on the street face of some ordinary blocks. */
+function buildTerraces(definition: CityDefinition, rng: Rng, batches: Batches): void {
+  const landmarkIds = new Set(definition.landmarks.map((landmark) => landmark.id));
+  for (const blocker of definition.blockers) {
+    if (landmarkIds.has(blocker.id) || blocker.id.startsWith('river')) continue;
+    if (width(blocker) < 8 || rng.next() > 0.45) continue;
+    const x0 = blocker.minX + 1.5 + rng.next() * Math.max(0, width(blocker) - 9);
+    const z = blocker.maxZ + 1.1;
+    const ok = [x0, x0 + 6].every((x) => {
+      if (definition.roads.some((road) => contains(grow(road, 0.5), x, z))) return false;
+      if (definition.sockets.some((socket) => Math.hypot(socket.position[0] - x, socket.position[2] - z) < SOCKET_CLEAR_RADIUS)) return false;
+      return Math.hypot(definition.spawn[0] - x, definition.spawn[2] - z) >= SOCKET_CLEAR_RADIUS;
+    });
+    if (!ok) continue;
+    const awning = rng.pick(AWNING_TONES);
+    for (let x = x0; x < x0 + 6; x += 1) {
+      batches.boxes.push({ x: x + 0.5, y: 3.1, z: blocker.maxZ + 0.9, sx: 1, sy: 0.14, sz: 1.8, rx: 0.3, color: Math.round(x - x0) % 2 === 0 ? awning : CREAM });
+    }
+    for (let x = x0 + 1.2; x < x0 + 6; x += 2.4) {
+      batches.cylinders.push({ x, y: 0.45, z, sx: 0.16, sy: 0.9, sz: 0.16, color: INK });
+      batches.cylinders.push({ x, y: 0.95, z, sx: 1.1, sy: 0.1, sz: 1.1, color: TABLE_TONE });
+      batches.boxes.push({ x: x - 0.85, y: 0.5, z, sx: 0.45, sy: 0.1, sz: 0.45, color: INK });
+      batches.boxes.push({ x: x + 0.85, y: 0.5, z, sx: 0.45, sy: 0.1, sz: 0.45, color: INK });
+    }
+  }
+}
+
+function buildRiver(segments: readonly Blocker[], bridges: readonly RectXZ[], quality: Quality, batches: Batches): void {
   for (const segment of segments) {
     batches.flats.push(flatItem(segment, 0.03, WATER_TONE));
-    batches.flats.push(flatItem(grow({ ...segment, maxX: segment.minX + 0.6 }, 0), 0.032, '#7fdcf2'));
-    batches.boxes.push(boxItem({ ...segment, maxX: segment.minX + 0.6 }, 0, 0.5, QUAY_TONE));
-    batches.boxes.push(boxItem({ ...segment, minX: segment.maxX - 0.6 }, 0, 0.5, QUAY_TONE));
+    batches.flats.push(flatItem({ ...segment, minX: segment.minX + 2, maxX: segment.minX + 2.5 }, 0.032, '#7fdcf2'));
+    // Quays: a lower stone walkway inside the river blocker, a parapet wall at street level, bollards.
+    for (const side of [-1, 1] as const) {
+      const walk: RectXZ = side < 0 ? { ...segment, maxX: segment.minX + 2 } : { ...segment, minX: segment.maxX - 2 };
+      const wall: RectXZ = side < 0 ? { ...segment, maxX: segment.minX + 0.6 } : { ...segment, minX: segment.maxX - 0.6 };
+      batches.boxes.push(boxItem(walk, 0, 0.3, QUAY_TONE));
+      batches.boxes.push(boxItem(wall, 0, 0.9, BRIDGE_TONE));
+      if (quality === 'low') continue;
+      const x = side < 0 ? segment.minX + 1.4 : segment.maxX - 1.4;
+      for (let z = segment.minZ + 3; z < segment.maxZ - 2; z += 6) {
+        batches.cylinders.push({ x, y: 0.6, z, sx: 0.4, sy: 0.6, sz: 0.4, color: IRON_TONE });
+      }
+      for (let z = segment.minZ + 6; z < segment.maxZ - 4; z += 12) {
+        const leaf = PLANE_LEAF_TONES[Math.round(z / 12) % PLANE_LEAF_TONES.length]!;
+        batches.cylinders.push({ x, y: 1.5, z, sx: 0.45, sy: 3.0, sz: 0.45, color: PLANE_TRUNK_TONE });
+        batches.spheres.push({ x, y: 3.9, z, sx: 2.2, sy: 1.4, sz: 2.2, color: leaf });
+      }
+    }
   }
   for (const bridge of bridges) {
     const w = width(bridge) + 2;
@@ -454,8 +556,8 @@ function buildRiver(segments: readonly Blocker[], bridges: readonly RectXZ[], ba
 // ---------------------------------------------------------------------------
 
 const EIFFEL_PLATFORM_1 = 12;
-const EIFFEL_PLATFORM_2 = 22;
-const EIFFEL_SHAFT_TOP = 32;
+const EIFFEL_PLATFORM_2 = 23;
+const EIFFEL_SHAFT_TOP = 40;
 const CORNERS: readonly (readonly [number, number])[] = [
   [-1, -1],
   [1, -1],
@@ -471,13 +573,13 @@ function buildEiffel(landmark: Landmark, quality: Quality, batches: Batches): vo
     x: cx,
     y: (EIFFEL_PLATFORM_2 + EIFFEL_SHAFT_TOP) / 2,
     z: cz,
-    sx: 2.2,
+    sx: 2.4,
     sy: EIFFEL_SHAFT_TOP - EIFFEL_PLATFORM_2,
-    sz: 2.2,
+    sz: 2.4,
     color: IRON_TONE,
   });
   const half = Math.min(width(landmark.footprint), depth(landmark.footprint)) / 2;
-  const legSpread = half - 1.2;
+  const legSpread = half - 0.6;
   const at = (x: number, y: number, z: number): Vec3 => [cx + x, y, cz + z];
   const box = (x: number, y: number, z: number, sx: number, sy: number, sz: number) =>
     boxes.push({ x: cx + x, y, z: cz + z, sx, sy, sz, color: IRON_TONE });
@@ -502,12 +604,24 @@ function buildEiffel(landmark: Landmark, quality: Quality, batches: Batches): vo
       boxes.push(strutItem(at(bx, y, bz), at((ax + bx) / 2, apexY, (az + bz) / 2), 0.3, IRON_TONE));
     });
     box(0, EIFFEL_PLATFORM_1 + 1.1, 0, 5.8, 1.0, 5.8);
+    // Lattice X-bracing on the upper shaft so the silhouette reads as ironwork, not a post.
+    for (let y = EIFFEL_PLATFORM_2 + 1; y < EIFFEL_SHAFT_TOP - 3; y += 4) {
+      const t0 = (y - EIFFEL_PLATFORM_2) / (EIFFEL_SHAFT_TOP - EIFFEL_PLATFORM_2);
+      const t1 = (y + 4 - EIFFEL_PLATFORM_2) / (EIFFEL_SHAFT_TOP - EIFFEL_PLATFORM_2);
+      const r0 = 1.3 - 0.55 * t0;
+      const r1 = 1.3 - 0.55 * t1;
+      for (const [sx, sz] of CORNERS) {
+        boxes.push(strutItem(at(sx * r0, y, sz * r0), at(-sx * r1, y + 4, sz * r1), 0.22, IRON_TONE));
+      }
+    }
+    box(0, EIFFEL_PLATFORM_1 + 9, 0, 4.4, 0.6, 4.4);
   }
   box(0, EIFFEL_PLATFORM_1, 0, 7.2, 1.1, 7.2);
-  box(0, EIFFEL_PLATFORM_2, 0, 3.6, 0.9, 3.6);
-  box(0, EIFFEL_SHAFT_TOP + 0.4, 0, 2.2, 0.8, 2.2);
-  box(0, EIFFEL_SHAFT_TOP + 2.6, 0, 0.4, 3.6, 0.4);
-  boxes.push({ x: cx, y: EIFFEL_SHAFT_TOP + 4.7, z: cz, sx: 0.9, sy: 0.9, sz: 0.9, color: YELLOW });
+  box(0, EIFFEL_PLATFORM_2, 0, 3.8, 0.9, 3.8);
+  box(0, EIFFEL_SHAFT_TOP + 0.4, 0, 2.6, 0.8, 2.6);
+  box(0, EIFFEL_SHAFT_TOP + 1.4, 0, 1.4, 1.2, 1.4);
+  box(0, EIFFEL_SHAFT_TOP + 4.0, 0, 0.4, 4.4, 0.4);
+  boxes.push({ x: cx, y: EIFFEL_SHAFT_TOP + 6.5, z: cz, sx: 1.0, sy: 1.0, sz: 1.0, color: YELLOW });
 }
 
 const PYRAMID_BASE = 7;
@@ -524,6 +638,11 @@ function buildLouvreCourtyard(landmark: Landmark, quality: Quality, batches: Bat
   batches.boxes.push({ x: px, y: 0.1, z: pz, sx: PYRAMID_BASE + 1.2, sy: 0.2, sz: PYRAMID_BASE + 1.2, color: LAVENDER });
   batches.cones.push({ x: px, y: PYRAMID_HEIGHT / 2, z: pz, sx: PYRAMID_BASE, sy: PYRAMID_HEIGHT, sz: PYRAMID_BASE, color: PYRAMID_TONE });
   batches.flats.push(flatItem(shadowOf({ minX: px - 3, maxX: px + 3, minZ: pz - 3, maxZ: pz + 3 }), 0.013, SHADOW_TONE));
+  // Three small satellite pyramids and a reflecting-pool strip, as in the Cour Napoléon.
+  for (const [sx, sz] of [[-1, 0], [1, 0], [0, 1]] as const) {
+    batches.cones.push({ x: px + sx * 6, y: 0.9, z: pz + sz * 5.5, sx: 1.8, sy: 1.8, sz: 1.8, color: PYRAMID_TONE });
+  }
+  batches.flats.push(flatItem({ minX: px - 5, maxX: px + 5, minZ: pz + 4.4, maxZ: pz + 5.6 }, 0.016, CYAN));
   if (quality === 'low') return;
   // Cyan ridge lines make the pyramid read as glass at distance without a second material.
   const half = PYRAMID_BASE / 2;
@@ -532,6 +651,60 @@ function buildLouvreCourtyard(landmark: Landmark, quality: Quality, batches: Bat
     batches.boxes.push(strutItem([px + sx * half, 0, pz + sz * half], apex, 0.28, IRON_TONE));
   }
   batches.boxes.push({ x: px, y: 0.3, z: pz, sx: PYRAMID_BASE + 0.3, sy: 0.3, sz: PYRAMID_BASE + 0.3, color: IRON_TONE });
+}
+
+/**
+ * Louvre massing: a U of long low wings around the courtyard, a taller central pavilion with a
+ * dome on the north wing, square corner pavilions with steep roofs, and a pilaster rhythm inside.
+ */
+function buildLouvreWings(footprint: RectXZ, quality: Quality, batches: Batches): void {
+  const wing = 3.6;
+  const wingHeight = 6;
+  const pavilion = 4.6;
+  const north: RectXZ = { minX: footprint.minX, maxX: footprint.maxX, minZ: footprint.minZ, maxZ: footprint.minZ + wing };
+  const west: RectXZ = { minX: footprint.minX, maxX: footprint.minX + wing, minZ: footprint.minZ + wing, maxZ: footprint.maxZ };
+  const east: RectXZ = { minX: footprint.maxX - wing, maxX: footprint.maxX, minZ: footprint.minZ + wing, maxZ: footprint.maxZ };
+  for (const rect of [north, west, east]) {
+    batches.boxes.push(boxItem(rect, 0, wingHeight, LOUVRE_STONE));
+    batches.frustums.push(boxItem(grow(rect, 0.3), wingHeight, 1.8, LOUVRE_ROOF));
+    batches.flats.push(flatItem(shadowOf(rect), 0.011, SHADOW_TONE));
+  }
+  const corners: RectXZ[] = [
+    { minX: footprint.minX, maxX: footprint.minX + pavilion, minZ: footprint.minZ, maxZ: footprint.minZ + pavilion },
+    { minX: footprint.maxX - pavilion, maxX: footprint.maxX, minZ: footprint.minZ, maxZ: footprint.minZ + pavilion },
+    { minX: footprint.minX, maxX: footprint.minX + pavilion, minZ: footprint.maxZ - pavilion, maxZ: footprint.maxZ },
+    { minX: footprint.maxX - pavilion, maxX: footprint.maxX, minZ: footprint.maxZ - pavilion, maxZ: footprint.maxZ },
+  ];
+  for (const rect of corners) {
+    batches.boxes.push(boxItem(rect, 0, wingHeight + 1.6, LOUVRE_STONE));
+    batches.frustums.push(boxItem(grow(rect, 0.3), wingHeight + 1.6, 2.6, LOUVRE_ROOF));
+    batches.boxes.push({ x: centerX(rect), y: wingHeight + 4.5, z: centerZ(rect), sx: 1.4, sy: 0.6, sz: 1.4, color: LOUVRE_ROOF });
+  }
+  const cx = centerX(footprint);
+  const central: RectXZ = { minX: cx - 3.4, maxX: cx + 3.4, minZ: footprint.minZ - 0.4, maxZ: footprint.minZ + wing + 1.2 };
+  batches.boxes.push(boxItem(central, 0, wingHeight + 2.4, LOUVRE_STONE));
+  batches.frustums.push(boxItem(grow(central, 0.3), wingHeight + 2.4, 1.6, LOUVRE_ROOF));
+  batches.spheres.push({ x: cx, y: wingHeight + 4.4, z: centerZ(central), sx: 2.4, sy: 1.8, sz: 2.4, color: LOUVRE_ROOF });
+  batches.boxes.push({ x: cx, y: wingHeight + 6.6, z: centerZ(central), sx: 0.3, sy: 1.4, sz: 0.3, color: YELLOW });
+  if (quality === 'low') return;
+  for (const rect of [north, west, east, ...corners, central]) {
+    batches.boxes.push(boxItem(grow(rect, 0.1), 0, 1.0, PLINTH_TONE));
+    batches.boxes.push(boxItem(grow(rect, 0.35), wingHeight - 0.5, 0.5, TRIM_TONE));
+  }
+  // Pilasters and tall arched windows on the courtyard faces.
+  for (let x = north.minX + pavilion + 1; x < north.maxX - pavilion; x += 2.2) {
+    batches.boxes.push({ x, y: wingHeight / 2, z: north.maxZ + 0.12, sx: 0.4, sy: wingHeight, sz: 0.24, color: TRIM_TONE });
+    batches.boxes.push({ x: x + 1.1, y: 3.2, z: north.maxZ + 0.05, sx: 0.9, sy: 3.2, sz: 0.1, color: WINDOW_TONE });
+  }
+  for (let z = west.minZ + 1; z < footprint.maxZ - pavilion; z += 2.2) {
+    batches.boxes.push({ x: west.maxX + 0.12, y: wingHeight / 2, z, sx: 0.24, sy: wingHeight, sz: 0.4, color: TRIM_TONE });
+    batches.boxes.push({ x: east.minX - 0.12, y: wingHeight / 2, z, sx: 0.24, sy: wingHeight, sz: 0.4, color: TRIM_TONE });
+    batches.boxes.push({ x: west.maxX + 0.05, y: 3.2, z: z + 1.1, sx: 0.1, sy: 3.2, sz: 0.9, color: WINDOW_TONE });
+    batches.boxes.push({ x: east.minX - 0.05, y: 3.2, z: z + 1.1, sx: 0.1, sy: 3.2, sz: 0.9, color: WINDOW_TONE });
+  }
+  for (let x = footprint.minX + 1.5; x < footprint.maxX - 1; x += 2.6) {
+    batches.boxes.push({ x, y: 3.4, z: footprint.minZ - 0.05, sx: 1.0, sy: 2.6, sz: 0.1, color: WINDOW_TONE });
+  }
 }
 
 function buildCafe(landmark: Landmark, quality: Quality, batches: Batches): void {
@@ -635,19 +808,11 @@ export function ParisScene({ definition, seed, quality }: CitySceneProps) {
         batches.flats.push(flatItem(grow(footprint, 1), 0.014, COURTYARD_TONE));
         buildEiffel(landmark, quality, batches);
       } else if (landmark.silhouette === 'museum') {
-        const wing = 3.6;
-        const wings: RectXZ[] = [
-          { minX: footprint.minX, maxX: footprint.maxX, minZ: footprint.minZ, maxZ: footprint.minZ + wing },
-          { minX: footprint.minX, maxX: footprint.minX + wing, minZ: footprint.minZ + wing, maxZ: footprint.maxZ },
-          { minX: footprint.maxX - wing, maxX: footprint.maxX, minZ: footprint.minZ + wing, maxZ: footprint.maxZ },
-        ];
-        for (const rect of wings) {
-          segments.push({ rect, height: 5.2, stone: STONE_TONES[1], roof: ROOF_TONES[0], outer: rect });
-        }
+        buildLouvreWings(footprint, quality, batches);
         buildLouvreCourtyard(landmark, quality, batches);
       } else if (landmark.silhouette === 'cafe') {
         const body: RectXZ = { ...footprint, maxZ: footprint.maxZ - 2 };
-        segments.push({ rect: body, height: 5.4, stone: CAFE_TONE, roof: ROOF_TONES[2], outer: body });
+        segments.push({ rect: body, height: 5.4, stone: CAFE_TONE, roof: ROOF_TONES[2], style: 'mansard', outer: body });
         buildCafe(landmark, quality, batches);
       }
     }
@@ -662,7 +827,7 @@ export function ParisScene({ definition, seed, quality }: CitySceneProps) {
         }
       }
     }
-    buildRiver(riverSegments, bridges, batches);
+    buildRiver(riverSegments, bridges, quality, batches);
     buildFacades(segments, rng, quality, batches);
     buildProps(definition, rng, quality, batches);
     buildBackdrop(bounds, rng, quality, batches);
