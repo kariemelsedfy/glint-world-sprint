@@ -6,6 +6,8 @@ import { buildCollisionWorld, moveCircle } from '@/game/collision';
 import { TICK_MS, createClockAccumulator } from '@/game/clock';
 import { absorbBlockedVelocity, createMotion, speedOf, stepMotion } from '@/game/movement';
 import { getMoveAxis, resetInput, setTouchAxis } from '@/game/input';
+import { TARGETS } from '@/content/targets';
+import { getTargetImage } from '@/assets/targetImages';
 
 const HALF = CITY_HALF_EXTENT;
 const R = PLAYER_RADIUS;
@@ -152,5 +154,18 @@ describe('run clock accumulator', () => {
     clock.rebase(10_000);
     expect(clock.advance(10_050)).toBe(0);
     expect(clock.advance(10_100)).toBe(100);
+  });
+});
+
+describe('target image registry', () => {
+  it('has a distinct local picture and alt text for every target', () => {
+    const seen = new Set<string>();
+    for (const target of TARGETS) {
+      const image = getTargetImage(target.id);
+      expect(image.url, target.id).toMatch(/^data:image\/svg\+xml|\.svg$/);
+      expect(image.alt.trim().length, target.id).toBeGreaterThan(8);
+      expect(seen.has(image.url), `${target.id} shares artwork`).toBe(false);
+      seen.add(image.url);
+    }
   });
 });
