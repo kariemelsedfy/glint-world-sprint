@@ -1,125 +1,220 @@
 /**
  * Procedural cartoon earth textures. Owner: A2.
- * Original simplified continent shapes (no map data) painted once into canvases;
- * cloud puffs and island specks come from the seeded RNG so every load matches.
+ * Hand-simplified continent outlines (lat/lon polygons, no map data or imagery) painted once into a
+ * cached canvas; deserts, caps, coasts and clouds are layered on top. Seeded RNG keeps every load identical.
  */
 import { CanvasTexture, SRGBColorSpace, RepeatWrapping } from 'three';
 import { createRng, hashSeed } from '@/shared/seed';
 
-export const OCEAN = '#2aa3dc';
-export const OCEAN_DEEP = '#1f7fc4';
-export const LAND = '#7ccd6a';
-export const LAND_DARK = '#5aad4f';
-export const SAND = '#e6c77a';
-export const ICE = '#f4fbff';
-export const COAST = '#1c6fa8';
+export const OCEAN = '#2a9fe0';
+export const OCEAN_DEEP = '#1d63c9';
+export const OCEAN_SHALLOW = '#22c4ea';
+export const LAND = '#8fdc78';
+export const LAND_MINT = '#a9e9b4';
+export const LAND_DARK = '#4fae58';
+export const SAND = '#f2d98a';
+export const DESERT = '#e9b96a';
+export const ICE = '#fff5e9';
+export const INK = '#211333';
 
-interface Blob {
-  readonly lat: number;
-  readonly lon: number;
-  /** Half extents in degrees. */
-  readonly rLon: number;
-  readonly rLat: number;
-  readonly color?: string;
-  readonly rot?: number;
+/** [latDeg, lonDeg] vertices, drawn as a smoothed closed loop. */
+type Outline = readonly (readonly [number, number])[];
+
+interface Land {
+  readonly outline: Outline;
+  readonly fill?: string;
 }
 
-/** Stylised, deliberately inaccurate landmasses that still read as "Earth". */
-const CONTINENTS: readonly Blob[] = [
-  // Eurasia
-  { lat: 51, lon: 12, rLon: 22, rLat: 12 },
-  { lat: 56, lon: 85, rLon: 62, rLat: 18 },
-  { lat: 40, lon: 100, rLon: 30, rLat: 12 },
-  { lat: 20, lon: 78, rLon: 10, rLat: 12 },
-  { lat: 24, lon: 46, rLon: 11, rLat: 9, color: SAND },
-  { lat: 14, lon: 103, rLon: 9, rLat: 8 },
-  { lat: 34, lon: 138, rLon: 3, rLat: 6 },
-  // Africa
-  { lat: 22, lon: 12, rLon: 26, rLat: 10, color: SAND },
-  { lat: 4, lon: 20, rLon: 20, rLat: 20 },
-  { lat: -18, lon: 24, rLon: 13, rLat: 16 },
-  { lat: -19, lon: 47, rLon: 3, rLat: 6 },
-  // North America
-  { lat: 48, lon: -100, rLon: 34, rLat: 18 },
-  { lat: 64, lon: -110, rLon: 42, rLat: 10 },
-  { lat: 34, lon: -100, rLon: 16, rLat: 8, color: SAND },
-  { lat: 17, lon: -93, rLon: 8, rLat: 6 },
-  { lat: 73, lon: -40, rLon: 12, rLat: 9, color: ICE },
-  // South America
-  { lat: -8, lon: -58, rLon: 18, rLat: 18 },
-  { lat: -30, lon: -63, rLon: 9, rLat: 16 },
-  { lat: -48, lon: -70, rLon: 4, rLat: 8 },
-  // Oceania
-  { lat: -25, lon: 134, rLon: 17, rLat: 11, color: SAND },
-  { lat: -28, lon: 148, rLon: 6, rLat: 10 },
-  { lat: -41, lon: 173, rLon: 3, rLat: 5 },
-  { lat: -5, lon: 140, rLon: 10, rLat: 4 },
+// Deliberately chunky, toy-like silhouettes; only the gestalt has to read as Earth.
+const NORTH_AMERICA: Outline = [
+  [71, -156], [70, -128], [73, -95], [68, -80], [62, -78], [60, -64], [52, -56], [47, -60], [44, -66],
+  [40, -74], [35, -76], [30, -81], [25, -80], [29, -89], [26, -97], [21, -97], [18, -95], [15, -92],
+  [9, -80], [8, -78], [12, -86], [16, -95], [22, -106], [30, -115], [37, -123], [46, -124], [56, -131],
+  [60, -147], [59, -160], [65, -166],
+];
+const SOUTH_AMERICA: Outline = [
+  [11, -73], [8, -60], [3, -51], [-4, -38], [-13, -38], [-22, -41], [-30, -50], [-38, -57], [-46, -66],
+  [-54, -68], [-50, -75], [-40, -73], [-30, -71], [-18, -70], [-6, -80], [1, -79], [7, -78],
+];
+const AFRICA: Outline = [
+  [36, -6], [37, 10], [33, 12], [31, 32], [23, 36], [12, 43], [11, 51], [2, 46], [-5, 40], [-15, 41],
+  [-25, 35], [-34, 26], [-34, 19], [-27, 15], [-16, 12], [-6, 12], [1, 9], [5, 5], [5, -6], [9, -14],
+  [15, -17], [21, -17], [28, -13], [33, -9],
+];
+const EURASIA: Outline = [
+  [70, 26], [71, 55], [76, 70], [76, 105], [72, 130], [69, 160], [64, 180], [59, 164], [55, 158],
+  [51, 141], [43, 134], [39, 122], [30, 122], [22, 112], [12, 109], [1, 104], [8, 98], [16, 94],
+  [22, 90], [17, 82], [8, 77], [21, 72], [24, 61], [26, 56], [22, 58], [15, 52], [13, 43], [21, 39],
+  [30, 33], [36, 36], [36, 28], [40, 22], [37, 15], [44, 12], [43, 7], [37, -2], [37, -9], [43, -9],
+  [48, -5], [51, 2], [54, 8], [57, 8], [58, 6], [62, 5], [69, 14],
+];
+const AUSTRALIA: Outline = [
+  [-12, 131], [-12, 136], [-16, 141], [-11, 143], [-19, 147], [-27, 153], [-33, 152], [-38, 147],
+  [-38, 140], [-35, 137], [-32, 133], [-34, 124], [-33, 115], [-26, 113], [-21, 115], [-18, 122], [-14, 127],
+];
+const GREENLAND: Outline = [
+  [83, -35], [81, -20], [76, -20], [70, -22], [65, -40], [60, -44], [64, -52], [72, -56], [78, -70], [82, -60],
+];
+const ANTARCTICA: Outline = [
+  [-66, -180], [-69, -120], [-73, -80], [-70, -60], [-72, -20], [-68, 10], [-66, 50], [-66, 90],
+  [-65, 130], [-70, 170], [-72, 180], [-90, 180], [-90, -180],
+];
+
+const LANDS: readonly Land[] = [
+  { outline: NORTH_AMERICA },
+  { outline: SOUTH_AMERICA },
+  { outline: AFRICA },
+  { outline: EURASIA },
+  { outline: AUSTRALIA },
+  { outline: GREENLAND, fill: ICE },
+  { outline: ANTARCTICA, fill: ICE },
+  { outline: [[59, -8], [58, -3], [53, 1], [51, 1], [50, -5], [54, -4], [58, -6]] },
+  { outline: [[45, 142], [43, 145], [36, 141], [33, 133], [31, 131], [35, 133], [39, 140], [42, 140]] },
+  { outline: [[-12, 49], [-16, 50], [-25, 47], [-25, 44], [-19, 44], [-13, 48]] },
+  { outline: [[-34, 173], [-37, 178], [-41, 176], [-46, 171], [-46, 167], [-41, 172], [-38, 174]] },
+  { outline: [[-2, 141], [-3, 150], [-9, 148], [-9, 143], [-6, 138], [-2, 133]] },
+  { outline: [[5, 96], [-1, 100], [-6, 106], [-7, 113], [-3, 116], [1, 111], [-1, 104], [3, 101]] },
+  { outline: [[65, -20], [66, -14], [64, -14], [63, -22]] },
+  { outline: [[22, -78], [20, -74], [21, -84], [23, -82]] },
+];
+
+// Deserts are inset blobs so the coast stays green/sandy around them.
+const DESERTS: readonly Land[] = [
+  { outline: [[30, -10], [31, 10], [28, 30], [20, 32], [15, 22], [16, 5], [20, -12]] },
+  { outline: [[30, 40], [28, 52], [21, 54], [17, 47], [22, 40]] },
+  { outline: [[-20, 120], [-22, 137], [-30, 138], [-31, 125], [-25, 118]] },
+  { outline: [[44, 90], [45, 110], [40, 108], [38, 92]] },
+  { outline: [[36, -116], [36, -106], [29, -106], [28, -113]] },
+  { outline: [[-22, 15], [-24, 20], [-30, 21], [-30, 16]] },
 ];
 
 function project(lat: number, lon: number, width: number, height: number): [number, number] {
   return [((lon + 180) / 360) * width, ((90 - lat) / 180) * height];
 }
 
-function drawBlob(ctx: CanvasRenderingContext2D, blob: Blob, width: number, height: number, fill: string, grow: number) {
-  const [x, y] = project(blob.lat, blob.lon, width, height);
-  const rx = ((blob.rLon + grow) / 360) * width;
-  const ry = ((blob.rLat + grow) / 180) * height;
-  ctx.fillStyle = fill;
+/** Closed loop through the midpoints of the polygon edges: rounds every corner without extra vertices. */
+function traceOutline(ctx: CanvasRenderingContext2D, outline: Outline, width: number, height: number): void {
+  const points = outline.map(([lat, lon]) => project(lat, lon, width, height));
+  const n = points.length;
+  const mid = (a: [number, number], b: [number, number]): [number, number] => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
   ctx.beginPath();
-  ctx.ellipse(x, y, rx, ry, blob.rot ?? 0, 0, Math.PI * 2);
-  ctx.fill();
+  const start = mid(points[n - 1], points[0]);
+  ctx.moveTo(start[0], start[1]);
+  for (let i = 0; i < n; i += 1) {
+    const current = points[i];
+    const next = points[(i + 1) % n];
+    const m = mid(current, next);
+    ctx.quadraticCurveTo(current[0], current[1], m[0], m[1]);
+  }
+  ctx.closePath();
+}
+
+function fillOutlines(ctx: CanvasRenderingContext2D, lands: readonly Land[], width: number, height: number, fill: (land: Land) => string): void {
+  for (const land of lands) {
+    traceOutline(ctx, land.outline, width, height);
+    ctx.fillStyle = fill(land);
+    ctx.fill();
+  }
+}
+
+function strokeOutlines(ctx: CanvasRenderingContext2D, lands: readonly Land[], width: number, height: number, color: string, lineWidth: number): void {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.lineJoin = 'round';
+  for (const land of lands) {
+    traceOutline(ctx, land.outline, width, height);
+    ctx.stroke();
+  }
 }
 
 export function paintEarth(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  const unit = width / 512;
+
   const ocean = ctx.createLinearGradient(0, 0, 0, height);
   ocean.addColorStop(0, OCEAN_DEEP);
-  ocean.addColorStop(0.5, OCEAN);
+  ocean.addColorStop(0.35, OCEAN);
+  ocean.addColorStop(0.5, OCEAN_SHALLOW);
+  ocean.addColorStop(0.65, OCEAN);
   ocean.addColorStop(1, OCEAN_DEEP);
   ctx.fillStyle = ocean;
   ctx.fillRect(0, 0, width, height);
 
-  // Seeded island specks: decorative only, but deterministic per load.
+  // Seeded ocean shimmer + island specks: decorative only, deterministic per load.
   const rng = createRng(hashSeed('glint', 'earth-islands'));
-  ctx.fillStyle = LAND_DARK;
-  for (let i = 0; i < 60; i += 1) {
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  for (let i = 0; i < 40; i += 1) {
     const x = rng.next() * width;
-    const y = height * (0.2 + rng.next() * 0.6);
-    const r = 1.5 + rng.next() * 3;
+    const y = height * (0.15 + rng.next() * 0.7);
+    const r = (6 + rng.next() * 18) * unit;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * 2.4, r * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = LAND_DARK;
+  for (let i = 0; i < 36; i += 1) {
+    const x = rng.next() * width;
+    const y = height * (0.25 + rng.next() * 0.5);
+    const r = (1.2 + rng.next() * 2.2) * unit;
     ctx.beginPath();
     ctx.ellipse(x, y, r * 1.6, r, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Coast halo, then land fill, then a slightly inset highlight for a toy look.
-  for (const blob of CONTINENTS) drawBlob(ctx, blob, width, height, COAST, 1.6);
-  for (const blob of CONTINENTS) drawBlob(ctx, blob, width, height, blob.color ?? LAND_DARK, 0.6);
-  for (const blob of CONTINENTS) drawBlob(ctx, blob, width, height, blob.color ?? LAND, -1.2);
+  // Shallow-water halo, sandy coast, ink outline, then land fill and a mint highlight band.
+  strokeOutlines(ctx, LANDS, width, height, 'rgba(160,240,255,0.55)', 9 * unit);
+  strokeOutlines(ctx, LANDS, width, height, SAND, 5 * unit);
+  strokeOutlines(ctx, LANDS, width, height, INK, 2.4 * unit);
+  fillOutlines(ctx, LANDS, width, height, (land) => land.fill ?? LAND_DARK);
 
-  // Polar caps
-  ctx.fillStyle = ICE;
-  ctx.fillRect(0, 0, width, (12 / 180) * height);
-  ctx.fillRect(0, height - (22 / 180) * height, width, (22 / 180) * height);
+  ctx.save();
+  ctx.translate(0, -1.6 * unit);
+  fillOutlines(ctx, LANDS, width, height, (land) => land.fill ?? LAND);
+  ctx.restore();
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.translate(0, -4 * unit);
+  ctx.scale(1, 0.94);
+  fillOutlines(ctx, LANDS, width, height, (land) => land.fill ?? LAND_MINT);
+  ctx.restore();
 
-  // Clouds are baked into the surface: one textured draw instead of a second transparent shell.
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  fillOutlines(ctx, DESERTS, width, height, () => DESERT);
+  ctx.restore();
+
+  // Polar cap: Antarctica is an outline above; the north gets a soft ice ring.
+  const cap = ctx.createLinearGradient(0, 0, 0, (16 / 180) * height);
+  cap.addColorStop(0, ICE);
+  cap.addColorStop(0.7, ICE);
+  cap.addColorStop(1, 'rgba(255,245,233,0)');
+  ctx.fillStyle = cap;
+  ctx.fillRect(0, 0, width, (16 / 180) * height);
+
   paintClouds(ctx, width, height);
 }
 
+/** A few large, soft cloud banks; baked into the surface so the globe stays a single textured draw. */
 export function paintClouds(ctx: CanvasRenderingContext2D, width: number, height: number): void {
   const rng = createRng(hashSeed('glint', 'earth-clouds'));
   const unit = width / 512;
-  for (let i = 0; i < 110; i += 1) {
+  for (let i = 0; i < 14; i += 1) {
     const x = rng.next() * width;
-    const y = height * (0.08 + rng.next() * 0.84);
-    const r = (10 + rng.next() * 26) * unit;
-    const alpha = 0.45 + rng.next() * 0.35;
-    const puff = ctx.createRadialGradient(x, y, 0, x, y, r);
-    puff.addColorStop(0, `rgba(255,255,255,${alpha.toFixed(2)})`);
-    puff.addColorStop(0.7, `rgba(255,255,255,${(alpha * 0.5).toFixed(2)})`);
-    puff.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = puff;
-    ctx.beginPath();
-    ctx.ellipse(x, y, r * 1.8, r, 0, 0, Math.PI * 2);
-    ctx.fill();
+    const y = height * (0.12 + rng.next() * 0.76);
+    const r = (14 + rng.next() * 22) * unit;
+    const alpha = 0.32 + rng.next() * 0.22;
+    for (let puffIndex = 0; puffIndex < 3; puffIndex += 1) {
+      const px = x + (rng.next() - 0.5) * r * 2.2;
+      const py = y + (rng.next() - 0.5) * r * 0.6;
+      const pr = r * (0.55 + rng.next() * 0.5);
+      const puff = ctx.createRadialGradient(px, py, 0, px, py, pr);
+      puff.addColorStop(0, `rgba(255,255,255,${alpha.toFixed(2)})`);
+      puff.addColorStop(0.6, `rgba(255,255,255,${(alpha * 0.7).toFixed(2)})`);
+      puff.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = puff;
+      ctx.beginPath();
+      ctx.ellipse(px, py, pr * 1.7, pr, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 
@@ -143,8 +238,8 @@ export function paintGlow(ctx: CanvasRenderingContext2D, width: number, height: 
   const cy = height / 2;
   // Sampled by the glow annulus (0.985R..1.25R over a 2.5R square): the rim starts at 0.4w and fades by 0.5w.
   const glow = ctx.createRadialGradient(cx, cy, width * 0.38, cx, cy, width * 0.5);
-  glow.addColorStop(0, 'rgba(140,210,255,0.85)');
-  glow.addColorStop(0.3, 'rgba(100,180,245,0.4)');
+  glow.addColorStop(0, 'rgba(182,161,232,0.8)');
+  glow.addColorStop(0.3, 'rgba(120,150,245,0.35)');
   glow.addColorStop(0.65, 'rgba(60,120,200,0.1)');
   glow.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = glow;
@@ -161,6 +256,6 @@ let earthTexture: CanvasTexture | null = null;
 
 /** Lazily created once per page; shared by every GlobeScene mount. */
 export function getEarthTexture(): CanvasTexture {
-  earthTexture ??= makeCanvasTexture(512, 256, paintEarth);
+  earthTexture ??= makeCanvasTexture(1024, 512, paintEarth);
   return earthTexture;
 }
