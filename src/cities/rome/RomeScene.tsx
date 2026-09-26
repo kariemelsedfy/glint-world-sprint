@@ -37,20 +37,20 @@ import type { Rng } from '@/shared/seed';
 // ---------------------------------------------------------------------------
 
 const UNIT_BOX = new BoxGeometry(1, 1, 1);
-const UNIT_CYLINDER = new CylinderGeometry(0.5, 0.5, 1, 8);
-const UNIT_SPHERE = new SphereGeometry(1, 7, 5);
-const UNIT_CONE = new ConeGeometry(0.5, 1, 7);
+const UNIT_CYLINDER = new CylinderGeometry(0.5, 0.5, 1, 7);
+const UNIT_SPHERE = new SphereGeometry(1, 6, 4);
+const UNIT_CONE = new ConeGeometry(0.5, 1, 6);
 const HIP_ROOF = new ConeGeometry(Math.SQRT1_2, 1, 4);
 const UNIT_PLANE = new PlaneGeometry(1, 1);
 const SOCKET_RING = new RingGeometry(1.7, 2.3, 20);
 /** Open-ended thin shell used for the Colosseum tiers and the fountain basins. */
-const SHELL = new CylinderGeometry(0.5, 0.5, 1, 40, 1, true);
+const SHELL = new CylinderGeometry(0.5, 0.5, 1, 30, 1, true);
 /** Flat annulus for Colosseum tier floors (inner radius is 60% of the outer). */
-const TIER_FLOOR = new RingGeometry(0.3, 0.5, 40);
+const TIER_FLOOR = new RingGeometry(0.3, 0.5, 30);
 /** Broken upper wall: about 55% of the circumference survives. */
 const ATTIC_SWEEP = Math.PI * 1.1;
-const ATTIC_SHELL = new CylinderGeometry(0.5, 0.5, 1, 24, 1, true, 0, ATTIC_SWEEP);
-const ATTIC_FLOOR = new RingGeometry(0.42, 0.5, 24, 1, 0, ATTIC_SWEEP);
+const ATTIC_SHELL = new CylinderGeometry(0.5, 0.5, 1, 18, 1, true, 0, ATTIC_SWEEP);
+const ATTIC_FLOOR = new RingGeometry(0.42, 0.5, 18, 1, 0, ATTIC_SWEEP);
 
 const WHITE = new MeshLambertMaterial({ color: '#ffffff' });
 const WHITE_DOUBLE = new MeshLambertMaterial({ color: '#ffffff', side: DoubleSide });
@@ -267,25 +267,9 @@ function buildHouses(houses: readonly House[], rng: Rng, quality: Quality, batch
     });
     batches.boxes.push(boxItem(eaves, height - 0.3, 0.35, TRIM_TONE));
     if (quality === 'low') continue;
-    // Pantile detail: a dark ridge cap and two tile courses running along the long axis of the roof.
+    // Pantile detail: a dark ridge cap along the long axis of the roof.
     const alongX = width(rect) >= depth(rect);
     batches.boxes.push({ x: centerX(rect), y: height + 1.75, z: centerZ(rect), sx: alongX ? width(rect) * 0.35 : 0.5, sy: 0.25, sz: alongX ? 0.5 : depth(rect) * 0.35, color: ROOF_RIDGE });
-    for (const t of [0.35, 0.6]) {
-      const half = alongX ? depth(eaves) / 2 : width(eaves) / 2;
-      const y = height + 0.9 + (1 - t) * 0.9;
-      for (const side of [-1, 1] as const) {
-        const off = side * half * t;
-        batches.boxes.push({
-          x: alongX ? centerX(eaves) : centerX(eaves) + off,
-          y,
-          z: alongX ? centerZ(eaves) + off : centerZ(eaves),
-          sx: alongX ? width(eaves) * (1 - t * 0.6) : 0.18,
-          sy: 0.12,
-          sz: alongX ? 0.18 : depth(eaves) * (1 - t * 0.6),
-          color: ROOF_RIDGE,
-        });
-      }
-    }
 
     // Ground-floor arches on the +Z face (the chase camera looks toward -Z, so +Z faces are seen).
     const frontZ = rect.maxZ + 0.06;
@@ -314,13 +298,11 @@ function buildHouses(houses: readonly House[], rng: Rng, quality: Quality, batch
           batches.boxes.push({ x, y, z: frontZ, sx: 1.0, sy: 1.5, sz: 0.1, color: WINDOW_TONE });
           batches.boxes.push({ x: x - 0.75, y, z: frontZ, sx: 0.4, sy: 1.5, sz: 0.14, color: SHUTTER_TONE });
           batches.boxes.push({ x: x + 0.75, y, z: frontZ, sx: 0.4, sy: 1.5, sz: 0.14, color: SHUTTER_TONE });
-          if (floor === 1 && rng.next() < 0.5) {
-            // Balcony: stone slab, iron railing, flower box.
+          if (floor === 1 && rng.next() < 0.4) {
+            // Balcony: stone slab, iron railing, one flower box.
             batches.boxes.push({ x, y: y - 0.85, z: frontZ + 0.45, sx: 2.2, sy: 0.16, sz: 0.9, color: TRIM_TONE });
             batches.boxes.push({ x, y: y - 0.35, z: frontZ + 0.88, sx: 2.2, sy: 0.9, sz: 0.06, color: RAILING_TONE });
-            batches.boxes.push({ x, y: y + 0.12, z: frontZ + 0.88, sx: 2.3, sy: 0.06, sz: 0.06, color: RAILING_TONE });
-            batches.spheres.push({ x: x - 0.6, y: y + 0.2, z: frontZ + 0.8, sx: 0.28, sy: 0.24, sz: 0.28, color: rng.pick(FLOWER_TONES) });
-            batches.spheres.push({ x: x + 0.6, y: y + 0.2, z: frontZ + 0.8, sx: 0.28, sy: 0.24, sz: 0.28, color: rng.pick(FLOWER_TONES) });
+            batches.boxes.push({ x, y: y + 0.2, z: frontZ + 0.8, sx: 1.6, sy: 0.4, sz: 0.5, color: rng.pick(FLOWER_TONES) });
           }
         }
       }
@@ -360,7 +342,7 @@ function buildTrattoria(landmark: Landmark, quality: Quality, batches: Batches):
 
   // Striped awning along the +Z front, hanging just off the facade.
   const frontZ = footprint.maxZ;
-  const stripe = quality === 'low' ? 2 : 1;
+  const stripe = 2;
   for (let x = footprint.minX; x < footprint.maxX - 0.01; x += stripe) {
     const index = Math.round((x - footprint.minX) / stripe);
     batches.boxes.push({ x: x + stripe / 2, y: 3.4, z: frontZ + 1.1, sx: stripe, sy: 0.14, sz: 2.2, rx: 0.3, color: index % 2 === 0 ? AWNING_GREEN : AWNING_WHITE });
@@ -391,10 +373,7 @@ function cafeTable(x: number, z: number, tone: string, batches: Batches): void {
   batches.cylinders.push({ x, y: 0.95, z, sx: 1.4, sy: 0.12, sz: 1.4, color: TABLE_TONE });
   batches.cylinders.push({ x, y: 1.9, z, sx: 0.1, sy: 2.0, sz: 0.1, color: LAMP_POST_TONE });
   batches.cones.push({ x, y: 3.2, z, sx: 3.2, sy: 0.9, sz: 3.2, color: tone });
-  batches.cones.push({ x, y: 3.7, z, sx: 0.4, sy: 0.3, sz: 0.4, color: TABLE_TONE });
-  for (const [dx, dz] of [[-0.9, 0.5], [0.9, 0.5]] as const) {
-    batches.boxes.push({ x: x + dx, y: 0.5, z: z + dz, sx: 0.5, sy: 0.9, sz: 0.5, color: TRUNK_TONE });
-  }
+  batches.boxes.push({ x: x + 0.9, y: 0.5, z: z + 0.5, sx: 0.5, sy: 0.9, sz: 0.5, color: TRUNK_TONE });
 }
 
 // ---------------------------------------------------------------------------
@@ -408,7 +387,7 @@ const ATTIC_HEIGHT = 4.6;
 function atticPoint(cx: number, cz: number, ax: number, az: number, angle: number): readonly [number, number] {
   return [cx + Math.cos(angle) * ax, cz - Math.sin(angle) * az];
 }
-const PILLAR_COUNT = 30;
+const PILLAR_COUNT = 24;
 
 function buildColosseum(landmark: Landmark, quality: Quality, batches: Batches): void {
   const { footprint } = landmark;
@@ -430,7 +409,7 @@ function buildColosseum(landmark: Landmark, quality: Quality, batches: Batches):
   batches.flats.push({ x: cx, y: plinthHeight + 0.31, z: cz, sx: rx * 1.1, sy: 1.4, sz: 1, rx: FLAT, color: ARCH_SHADOW });
   batches.flats.push({ x: cx, y: plinthHeight + 0.31, z: cz, sx: 1.4, sy: rz * 1.1, sz: 1, rx: FLAT, color: ARCH_SHADOW });
   // Cavea: stepped seating rings climbing from the arena wall up to the second tier floor.
-  const seatRows = quality === 'low' ? 3 : 6;
+  const seatRows = quality === 'low' ? 3 : 4;
   for (let row = 0; row < seatRows; row += 1) {
     const t = (row + 1) / (seatRows + 1);
     const sx = rx * 1.25 + (rx * 2 - 2.6 - rx * 1.25) * t;
@@ -460,14 +439,12 @@ function buildColosseum(landmark: Landmark, quality: Quality, batches: Batches):
       const px = cx + Math.cos(angle) * (tx - 0.55);
       const pz = cz + Math.sin(angle) * (tz - 0.55);
       batches.boxes.push({ x: px, y: y0 + (TIER_HEIGHT - 1) / 2, z: pz, sx: 1.1, sy: TIER_HEIGHT - 1, sz: 1.1, ry: -angle, color: tier === 1 ? TRAVERTINE_LIGHT : TRAVERTINE });
-      if (quality === 'low') continue;
-      // Rounded arch head over each opening, a light keystone above it, and a pilaster capital.
+      // Rounded arch head over each opening, on the camera-facing half of the two lower tiers only.
+      if (quality === 'low' || tier === TIER_COUNT - 1 || Math.sin(angle) < -0.2) continue;
       const mid = angle + Math.PI / pillars;
       const ax = cx + Math.cos(mid) * (tx - 0.5);
       const az = cz + Math.sin(mid) * (tz - 0.5);
       batches.cylinders.push({ x: ax, y: y0 + TIER_HEIGHT - 1.55, z: az, sx: 1.9, sy: 0.5, sz: 1.9, rx: Math.PI / 2, ry: -mid, color: ARCH_SHADOW });
-      batches.boxes.push({ x: ax, y: y0 + TIER_HEIGHT - 0.9, z: az, sx: 0.5, sy: 0.7, sz: 0.5, ry: -mid, color: TRAVERTINE_LIGHT });
-      batches.boxes.push({ x: px, y: y0 + TIER_HEIGHT - 1.15, z: pz, sx: 1.4, sy: 0.3, sz: 1.4, ry: -angle, color: TRAVERTINE_LIGHT });
     }
   }
   // Statues in the second-tier arches facing the piazza.
@@ -498,7 +475,7 @@ function buildColosseum(landmark: Landmark, quality: Quality, batches: Batches):
     batches.boxes.push({ x: wx, y: atticY0 + 2.2, z: wz, sx: 1.2, sy: 0.9, sz: 1.2, ry: -angle + 0.4, color: TRAVERTINE });
   }
   if (quality === 'low') return;
-  const pilasters = 16;
+  const pilasters = 10;
   for (let index = 0; index <= pilasters; index += 1) {
     const angle = (index / pilasters) * ATTIC_SWEEP;
     const [px, pz] = atticPoint(cx, cz, ax + 0.15, az + 0.15, angle);
@@ -631,7 +608,7 @@ function buildFountain(landmark: Landmark, quality: Quality, batches: Batches): 
 function buildForumRuin(blocker: Blocker, rng: Rng, quality: Quality, batches: Batches): void {
   batches.boxes.push(boxItem(blocker, 0, 0.6, TRAVERTINE_DARK));
   batches.boxes.push(boxItem(grow(blocker, -0.8), 0.6, 0.5, TRAVERTINE));
-  const step = quality === 'low' ? 5 : 3.6;
+  const step = quality === 'low' ? 5 : 4;
   let index = 0;
   for (let x = blocker.minX + 2; x <= blocker.maxX - 2; x += step) {
     for (const z of [blocker.minZ + 2, blocker.maxZ - 2]) {
@@ -649,14 +626,11 @@ function buildForumRuin(blocker: Blocker, rng: Rng, quality: Quality, batches: B
   batches.cylinders.push({ x: centerX(blocker) + 4, y: 1.7, z: centerZ(blocker) + 3, sx: 1.3, sy: 2.4, sz: 1.3, color: TRAVERTINE_DARK });
   if (quality === 'low') return;
   // Checkered paving slabs on the podium, a grassy patch where slabs are missing, and steps on the +Z side.
-  for (let x = blocker.minX + 1.4; x < blocker.maxX - 1.2; x += 2.4) {
-    for (let z = blocker.minZ + 5.2; z < blocker.maxZ - 5.0; z += 2.4) {
-      const parity = (Math.round((x - blocker.minX) / 2.4) + Math.round((z - blocker.minZ) / 2.4)) % 2;
-      if (rng.next() < 0.12) {
-        batches.flats.push({ x, y: 1.115, z, sx: 2.1, sy: 2.1, sz: 1, rx: FLAT, color: GRASS_TONE });
-        continue;
-      }
-      batches.flats.push({ x, y: 1.115, z, sx: 2.1, sy: 2.1, sz: 1, rx: FLAT, color: parity === 0 ? TRAVERTINE_LIGHT : TRAVERTINE });
+  for (let x = blocker.minX + 1.8; x < blocker.maxX - 1.6; x += 3.2) {
+    for (let z = blocker.minZ + 5.4; z < blocker.maxZ - 5.0; z += 3.2) {
+      const parity = (Math.round((x - blocker.minX) / 3.2) + Math.round((z - blocker.minZ) / 3.2)) % 2;
+      if (parity === 1 && rng.next() > 0.15) continue;
+      batches.flats.push({ x, y: 1.115, z, sx: 2.9, sy: 2.9, sz: 1, rx: FLAT, color: parity === 1 ? GRASS_TONE : TRAVERTINE_LIGHT });
     }
   }
   batches.boxes.push({ x: centerX(blocker), y: 0.3, z: blocker.maxZ - 0.4, sx: width(blocker) * 0.4, sy: 0.6, sz: 0.8, color: TRAVERTINE_LIGHT });
@@ -668,7 +642,7 @@ function buildForumRuin(blocker: Blocker, rng: Rng, quality: Quality, batches: B
   }
   batches.boxes.push({ x: archX, y: 1.1 + 6.9, z: archZ, sx: 1.8, sy: 1.0, sz: 6.0, color: TRAVERTINE_DARK });
   batches.cylinders.push({ x: archX, y: 1.1 + 5.2, z: archZ, sx: 4.4, sy: 1.9, sz: 4.4, rz: Math.PI / 2, color: TRAVERTINE_DARK });
-  for (let i = 0; i < 6; i += 1) {
+  for (let i = 0; i < 3; i += 1) {
     batches.boxes.push({
       x: blocker.minX + 3 + rng.next() * (width(blocker) - 6),
       y: 1.5,
@@ -746,7 +720,7 @@ function buildOutskirts(bounds: RectXZ, rng: Rng, quality: Quality, batches: Bat
     batches.boxes.push(boxItem(rect, 0, wallHeight, TRAVERTINE_DARK));
     batches.boxes.push(boxItem(grow(rect, 0.1), wallHeight, 0.2, TRAVERTINE_LIGHT));
   }
-  const count = quality === 'low' ? 30 : 90;
+  const count = quality === 'low' ? 16 : 40;
   for (let i = 0; i < count; i += 1) {
     const side = rng.int(4);
     const along = rng.next();
@@ -761,8 +735,8 @@ function buildOutskirts(bounds: RectXZ, rng: Rng, quality: Quality, batches: Bat
       batches.spheres.push({ x, y: trunk + 1.2, z, sx: 3.4, sy: 1.6, sz: 3.4, color: rng.pick(PINE_TONES) });
     }
   }
-  for (let i = 0; i < 10; i += 1) {
-    const angle = (i / 10) * Math.PI * 2 + rng.next() * 0.3;
+  for (let i = 0; i < 8; i += 1) {
+    const angle = (i / 8) * Math.PI * 2 + rng.next() * 0.3;
     const dist = reach + 20 + rng.next() * 20;
     const x = centerX(bounds) + Math.cos(angle) * (width(bounds) / 2 + dist);
     const z = centerZ(bounds) + Math.sin(angle) * (depth(bounds) / 2 + dist);
@@ -787,7 +761,7 @@ function isPropSafe(definition: CityDefinition, x: number, z: number): boolean {
 
 function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batches: Batches): void {
   const placed: [number, number][] = [];
-  const target = quality === 'low' ? 20 : 56;
+  const target = quality === 'low' ? 16 : 34;
   const { bounds } = definition;
   for (let attempt = 0; attempt < target * 8 && placed.length < target; attempt += 1) {
     const x = bounds.minX + rng.next() * width(bounds);
@@ -798,7 +772,7 @@ function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batc
     const roll = rng.next();
     if (roll < 0.3 && quality !== 'low') {
       // Cypress grove: a tight cluster of three to five spires of varying height.
-      const count = 3 + rng.int(3);
+      const count = 3;
       for (let i = 0; i < count; i += 1) {
         const angle = (i / count) * Math.PI * 2 + rng.next();
         const radius = 1.2 + rng.next() * 1.2;
@@ -822,8 +796,8 @@ function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batc
   for (const landmark of definition.landmarks) {
     if (landmark.silhouette !== 'fountain') continue;
     const ring = grow(landmark.footprint, 4);
-    for (let x = ring.minX + 1; x <= ring.maxX - 1; x += 4.5) {
-      for (const z of [ring.minZ, ring.maxZ]) {
+    for (let x = ring.minX + 1; x <= ring.maxX - 1; x += 6) {
+      for (const z of [ring.maxZ]) {
         if (!isPropSafe(definition, x, z)) continue;
         cafeTable(x, z, UMBRELLA_TONES[tables % UMBRELLA_TONES.length]!, batches);
         tables += 1;
@@ -843,18 +817,16 @@ function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batc
   for (const landmark of definition.landmarks) {
     if (landmark.silhouette === 'cafe') continue;
     const ring = grow(landmark.footprint, landmark.silhouette === 'colosseum' ? 7 : 6);
-    for (let x = ring.minX; x <= ring.maxX + 0.01; x += (width(ring) / Math.round(width(ring) / 6))) {
-      for (const z of [ring.minZ, ring.maxZ]) {
-        if (!isPropSafe(definition, x, z)) continue;
-        batches.cylinders.push({ x, y: 0.45, z, sx: 0.5, sy: 0.9, sz: 0.5, color: TRAVERTINE_DARK });
-        batches.spheres.push({ x, y: 0.95, z, sx: 0.3, sy: 0.3, sz: 0.3, color: TRAVERTINE_LIGHT });
-      }
+    for (let x = ring.minX; x <= ring.maxX + 0.01; x += (width(ring) / Math.round(width(ring) / 9))) {
+      const z = ring.maxZ;
+      if (!isPropSafe(definition, x, z)) continue;
+      batches.cylinders.push({ x, y: 0.5, z, sx: 0.5, sy: 1.0, sz: 0.5, color: TRAVERTINE_DARK });
     }
   }
   for (const road of definition.roads) {
     const horizontal = width(road) >= depth(road);
     const length = horizontal ? width(road) : depth(road);
-    for (let along = 9; along < length; along += 18) {
+    for (let along = 12; along < length; along += 26) {
       for (const side of [-1, 1] as const) {
         const x = horizontal ? road.minX + along : centerX(road) + side * (width(road) / 2 + 0.8);
         const z = horizontal ? centerZ(road) + side * (depth(road) / 2 + 0.8) : road.minZ + along;
@@ -887,18 +859,14 @@ export function RomeScene({ definition, seed, quality }: CitySceneProps) {
     }
     for (const road of roads) batches.flats.push(flatItem(road, 0.02, COBBLE_TONE));
     if (quality !== 'low') {
-      // Sparse cobble slabs in two tones, staggered along each lane, plus a pale centre line of kerbstones.
+      // Cobble texture as three long two-tone bands per road instead of hundreds of individual slabs.
       for (const road of roads) {
         const horizontal = width(road) >= depth(road);
-        const length = horizontal ? width(road) : depth(road);
-        for (let along = 1.5; along < length - 1.5; along += 2.2) {
-          for (const lane of [-4.5, -1.5, 1.5, 4.5]) {
-            if (rng.next() < 0.5) continue;
-            const stagger = Math.abs(lane) < 2 ? 1.1 : 0;
-            const x = horizontal ? road.minX + along + stagger : centerX(road) + lane;
-            const z = horizontal ? centerZ(road) + lane : road.minZ + along + stagger;
-            batches.flats.push({ x, y: 0.024, z, sx: 1.6, sy: 1.6, sz: 1, rx: FLAT, color: rng.next() < 0.5 ? COBBLE_DARK : COBBLE_LIGHT });
-          }
+        for (const lane of [-3.2, 0, 3.2]) {
+          const band: RectXZ = horizontal
+            ? { minX: road.minX + 0.6, maxX: road.maxX - 0.6, minZ: centerZ(road) + lane - 0.7, maxZ: centerZ(road) + lane + 0.7 }
+            : { minX: centerX(road) + lane - 0.7, maxX: centerX(road) + lane + 0.7, minZ: road.minZ + 0.6, maxZ: road.maxZ - 0.6 };
+          batches.flats.push(flatItem(band, 0.024, lane === 0 ? COBBLE_LIGHT : COBBLE_DARK));
         }
       }
     }
