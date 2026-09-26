@@ -72,14 +72,18 @@ const PATINA_DARK = '#3b7f72';
 const TOWER_DARK = '#3a4049';
 const ANTENNA_RED = '#e0483a';
 const ANTENNA_WHITE = '#f4f4f2';
-const ALTBAU_TONES = ['#fff0dc', '#f6e0bd', '#f3cfd9', '#dbe7d0', '#e4d9f3', '#f8dcc3', '#ece6d8'] as const;
-const ALTBAU_ROOF_TONES = ['#5b4a6e', '#4f4260', '#6b5680', '#544a62'] as const;
+const ALTBAU_TONES = ['#f4d9a6', '#e8b98f', '#efc3c9', '#cfdcb4', '#d9c9ec', '#f6c9a3', '#f1e2c4'] as const;
+const ALTBAU_ROOF_TONES = ['#4a3a5e', '#3f3450', '#5a4670', '#463c54'] as const;
+const SHOPFRONT_TONE = '#3a2f4a';
 const PLINTH_TONE = '#b9ad9c';
 const WINDOW_TONE = '#26304a';
 const CORNICE_TONE = '#fff7ec';
 const RAILING_TONE = INK;
-const SLAB_TONE = '#e9e7e1';
-const SLAB_SEAM_TONE = '#c7c4bd';
+const SLAB_TONE = '#dfe4e9';
+const SLAB_SEAM_TONE = '#b3bcc6';
+const SLAB_PANEL_TONES = [CYAN, '#8fd7ea', PINK] as const;
+const WIRE_TONE = '#3b3f47';
+const LONG_SHADOW_TONE = '#a9a49a';
 const BALCONY_TONES = [CYAN, PINK, YELLOW, LAVENDER] as const;
 const KIOSK_TONES = [YELLOW, CYAN, PINK, LAVENDER] as const;
 const WALL_TONE = '#e3dfd6';
@@ -271,13 +275,59 @@ function buildGroundShadows(blockers: readonly Blocker[], batches: Batches): voi
   for (const blocker of blockers) batches.flats.push(flatItem(shift(blocker, 1.6, 1.6), 0.01, SHADOW_TONE));
 }
 
+/** Long cast shadow of a tall object, thrown towards +X/+Z so the silhouette reads on the ground from afar. */
+function pushLongShadow(x: number, z: number, length: number, thickness: number, batches: Batches): void {
+  const dx = length * Math.SQRT1_2;
+  batches.flats.push({ x: x + dx / 2, y: 0.0155, z: z + dx / 2, sx: length, sy: thickness, sz: 1, rx: FLAT, rz: Math.PI / 4, color: LONG_SHADOW_TONE });
+}
+
+/** Overhead tram catenary: poles on both kerbs, span wires across, two contact wires along the tracks. */
+function buildCatenary(definition: CityDefinition, quality: Quality, batches: Batches): void {
+  for (const road of definition.roads) {
+    if (!contains(road, 0, 0)) continue;
+    const horizontal = width(road) >= depth(road);
+    const length = horizontal ? width(road) : depth(road);
+    const half = (horizontal ? depth(road) : width(road)) / 2;
+    for (const offset of [-1.7, 1.7]) {
+      const wire: InstanceItem = horizontal
+        ? { x: centerX(road), y: 5.9, z: centerZ(road) + offset, sx: length, sy: 0.07, sz: 0.07, color: WIRE_TONE }
+        : { x: centerX(road) + offset, y: 5.9, z: centerZ(road), sx: 0.07, sy: 0.07, sz: length, color: WIRE_TONE };
+      batches.boxes.push(wire);
+    }
+    if (quality === 'low') continue;
+    for (let along = 8; along < length; along += 18) {
+      const ax = horizontal ? road.minX + along : centerX(road);
+      const az = horizontal ? centerZ(road) : road.minZ + along;
+      let bothClear = true;
+      for (const side of [-1, 1] as const) {
+        const px = horizontal ? ax : ax + side * (half + 0.6);
+        const pz = horizontal ? az + side * (half + 0.6) : az;
+        if (!isClearForProps(definition, px, pz, false)) bothClear = false;
+      }
+      if (!bothClear) continue;
+      for (const side of [-1, 1] as const) {
+        const px = horizontal ? ax : ax + side * (half + 0.6);
+        const pz = horizontal ? az + side * (half + 0.6) : az;
+        batches.cylinders.push({ x: px, y: 3.4, z: pz, sx: 0.34, sy: 6.8, sz: 0.34, color: WIRE_TONE });
+        batches.boxes.push({ x: px, y: 6.9, z: pz, sx: 0.6, sy: 0.3, sz: 0.6, color: INK });
+      }
+      const span = half * 2 + 1.2;
+      batches.boxes.push(
+        horizontal
+          ? { x: ax, y: 6.5, z: az, sx: 0.06, sy: 0.06, sz: span, color: WIRE_TONE }
+          : { x: ax, y: 6.5, z: az, sx: span, sy: 0.06, sz: 0.06, color: WIRE_TONE },
+      );
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Landmarks
 // ---------------------------------------------------------------------------
 
-const GATE_COLUMN_TOP = 10.5;
-const GATE_ENTABLATURE = 1.9;
-const GATE_ATTIC = 2.4;
+const GATE_COLUMN_TOP = 8.6;
+const GATE_ENTABLATURE = 1.6;
+const GATE_ATTIC = 2.0;
 
 function buildGate(landmark: Landmark, quality: Quality, batches: Batches): void {
   const { footprint } = landmark;
@@ -286,7 +336,12 @@ function buildGate(landmark: Landmark, quality: Quality, batches: Batches): void
   const { boxes, cylinders, spheres } = batches;
 
   batches.flats.push(flatItem(grow(footprint, 12), 0.013, PLAZA_TONE));
+  // Paving pattern: a lighter stone cross marking the axis through the central passage
+  batches.flats.push(flatItem({ minX: cx - 3, maxX: cx + 3, minZ: footprint.minZ - 12, maxZ: footprint.maxZ + 12 }, 0.014, SIDEWALK_TONE));
+  batches.flats.push(flatItem({ minX: footprint.minX - 12, maxX: footprint.maxX + 12, minZ: footprint.maxZ + 3, maxZ: footprint.maxZ + 3.6 }, 0.014, SANDSTONE_DARK));
+  pushLongShadow(footprint.maxX - 2, cz + 2, 18, 12, batches);
   boxes.push(boxItem(footprint, 0, 0.6, SANDSTONE_DARK));
+  boxes.push(boxItem(grow(footprint, 0.8), 0, 0.25, SANDSTONE));
 
   const pierOffsets = [-12.4, -7.4, -2.5, 2.5, 7.4, 12.4];
   for (const dx of pierOffsets) {
@@ -316,8 +371,9 @@ function buildGate(landmark: Landmark, quality: Quality, batches: Batches): void
 
   // Quadriga: four horses pulling a chariot, patinated copper, facing the camera (+Z)
   const roofY = atticY + GATE_ATTIC;
-  boxes.push({ x: cx, y: roofY + 0.3, z: cz, sx: 8.4, sy: 0.6, sz: 6.4, color: SANDSTONE_DARK });
-  const horseY = roofY + 0.6;
+  boxes.push({ x: cx, y: roofY + 0.3, z: cz, sx: 9.0, sy: 0.6, sz: 6.8, color: INK });
+  boxes.push({ x: cx, y: roofY + 0.75, z: cz, sx: 8.4, sy: 0.3, sz: 6.4, color: SANDSTONE_DARK });
+  const horseY = roofY + 0.9;
   for (const dx of [-2.4, -0.8, 0.8, 2.4]) {
     boxes.push({ x: cx + dx, y: horseY + 2.0, z: cz + 1.0, sx: 1.1, sy: 1.3, sz: 2.8, color: PATINA });
     boxes.push({ x: cx + dx, y: horseY + 3.0, z: cz + 2.4, sx: 0.7, sy: 1.5, sz: 0.8, color: PATINA, rx: -0.35 });
@@ -340,9 +396,9 @@ function buildGate(landmark: Landmark, quality: Quality, batches: Batches): void
   boxes.push({ x: cx + 0.6, y: horseY + 5.9, z: cz - 2.0, sx: 0.9, sy: 0.9, sz: 0.2, color: YELLOW });
 }
 
-const TOWER_SHAFT_TOP = 36;
-const TOWER_SPHERE_Y = 38.5;
-const TOWER_SPHERE_R = 5.6;
+const TOWER_SHAFT_TOP = 27;
+const TOWER_SPHERE_Y = 29.5;
+const TOWER_SPHERE_R = 5.2;
 
 function buildTower(landmark: Landmark, quality: Quality, batches: Batches): void {
   const { footprint } = landmark;
@@ -351,6 +407,12 @@ function buildTower(landmark: Landmark, quality: Quality, batches: Batches): voi
   const { boxes, cylinders, spheres } = batches;
 
   batches.flats.push(flatItem(grow(footprint, 10), 0.013, PLAZA_TONE));
+  // Radial plaza rings + a long shadow with the sphere's disc at its end: the tower reads from the whole district.
+  cylinders.push({ x: cx, y: 0.014, z: cz, sx: 30, sy: 0.004, sz: 30, color: SIDEWALK_TONE });
+  cylinders.push({ x: cx, y: 0.015, z: cz, sx: 22, sy: 0.004, sz: 22, color: PLAZA_TONE });
+  pushLongShadow(cx, cz, 30, 4.2, batches);
+  const shadowEnd = 30 * Math.SQRT1_2;
+  cylinders.push({ x: cx + shadowEnd, y: 0.0156, z: cz + shadowEnd, sx: TOWER_SPHERE_R * 2.1, sy: 0.002, sz: TOWER_SPHERE_R * 2.1, color: LONG_SHADOW_TONE });
   boxes.push(boxItem(footprint, 0, 2.8, '#eeece6'));
   boxes.push(boxItem(grow(footprint, -0.6), 2.8, 0.5, TOWER_DARK));
   // Folded-plate pavilion roof
@@ -368,8 +430,10 @@ function buildTower(landmark: Landmark, quality: Quality, batches: Batches): voi
     }
   }
 
-  cylinders.push({ x: cx, y: TOWER_SPHERE_Y - 1.4, z: cz, sx: TOWER_SPHERE_R * 2 + 0.3, sy: 1.1, sz: TOWER_SPHERE_R * 2 + 0.3, color: TOWER_DARK });
-  cylinders.push({ x: cx, y: TOWER_SPHERE_Y + 1.0, z: cz, sx: TOWER_SPHERE_R * 2 + 0.2, sy: 0.7, sz: TOWER_SPHERE_R * 2 + 0.2, color: TOWER_DARK });
+  cylinders.push({ x: cx, y: TOWER_SPHERE_Y - 1.2, z: cz, sx: TOWER_SPHERE_R * 2 + 1.0, sy: 0.9, sz: TOWER_SPHERE_R * 2 + 1.0, color: TOWER_DARK });
+  cylinders.push({ x: cx, y: TOWER_SPHERE_Y + 1.2, z: cz, sx: TOWER_SPHERE_R * 2 + 0.9, sy: 0.6, sz: TOWER_SPHERE_R * 2 + 0.9, color: TOWER_DARK });
+  // Window band between the two rings
+  cylinders.push({ x: cx, y: TOWER_SPHERE_Y, z: cz, sx: TOWER_SPHERE_R * 2 + 0.6, sy: 1.4, sz: TOWER_SPHERE_R * 2 + 0.6, color: WINDOW_TONE });
   const antennaBase = TOWER_SPHERE_Y + TOWER_SPHERE_R - 0.4;
   const segment = 3.6;
   for (let index = 0; index < 5; index += 1) {
@@ -433,14 +497,22 @@ function buildPaintedWall(landmark: Landmark, rng: Rng, quality: Quality, batche
       const sy = 0.5 + rng.next() * 1.6;
       const x = left + 0.6 + rng.next() * (panelWidth - 1.2);
       const y = 1.0 + rng.next() * (WALL_HEIGHT - 2.2);
-      const kind = rng.int(3);
+      const kind = rng.int(5);
       const zOff = faceZ + 0.06 + shape * 0.012;
       if (kind === 0) {
         boxes.push({ x, y, z: zOff, sx, sy, sz: 0.04, color });
       } else if (kind === 1) {
         boxes.push({ x, y, z: zOff, sx: sx * 1.6, sy: 0.35, sz: 0.04, rz: (rng.next() - 0.5) * 1.4, color });
-      } else {
+      } else if (kind === 2) {
         cylinders.push({ x, y, z: zOff, sx: sy, sy: 0.04, sz: sy, rx: Math.PI / 2, color });
+      } else if (kind === 3) {
+        // Hollow ring / arc
+        batches.rings.push({ x, y, z: zOff, sx: sy * 0.45, sy: sy * 0.45, sz: 1, color });
+      } else {
+        // Dotted row
+        for (let dot = 0; dot < 4; dot += 1) {
+          cylinders.push({ x: x - 0.9 + dot * 0.6, y, z: zOff, sx: 0.3, sy: 0.04, sz: 0.3, rx: Math.PI / 2, color });
+        }
       }
     }
   }
@@ -486,8 +558,14 @@ function buildAltbau(houses: readonly House[], rng: Rng, quality: Quality, batch
     boxes.push(boxItem(grow(rect, 0.06), 0, 1.2, PLINTH_TONE));
     boxes.push(boxItem(grow(rect, -0.6), height, 2.6, roof));
     boxes.push(boxItem(grow(rect, 0.2), height, 0.5, CORNICE_TONE));
+    boxes.push(boxItem(grow(rect, 0.12), height - 0.9, 0.35, CORNICE_TONE));
     if (quality === 'low') continue;
     boxes.push(boxItem(grow(rect, -2.0), height + 2.6, 0.5, roof));
+    // Mansard dormers on the street side
+    for (let x = rect.minX + 2.2; x <= rect.maxX - 2.2; x += 4.8) {
+      boxes.push({ x, y: height + 1.1, z: rect.maxZ - 0.5, sx: 1.4, sy: 1.6, sz: 1.4, color: CORNICE_TONE });
+      boxes.push({ x, y: height + 1.1, z: rect.maxZ + 0.24, sx: 0.9, sy: 1.0, sz: 0.1, color: WINDOW_TONE });
+    }
     boxes.push({
       x: rect.minX + 1.5 + rng.next() * Math.max(0.1, width(rect) - 3),
       y: height + 3.4,
@@ -505,6 +583,15 @@ function buildAltbau(houses: readonly House[], rng: Rng, quality: Quality, batch
       if (frontVisible) {
         if (floor > 0) {
           boxes.push({ x: centerX(rect), y: sillY, z: rect.maxZ + 0.12, sx: width(rect), sy: 0.22, sz: 0.3, color: CORNICE_TONE });
+        } else {
+          // Ground-floor shopfront: dark band with a cream fascia and a doorway
+          boxes.push({ x: centerX(rect), y: 1.75, z: rect.maxZ + 0.08, sx: width(rect) - 0.6, sy: 2.3, sz: 0.16, color: SHOPFRONT_TONE });
+          boxes.push({ x: centerX(rect), y: 3.05, z: rect.maxZ + 0.2, sx: width(rect) - 0.4, sy: 0.4, sz: 0.4, color: rng.pick(BALCONY_TONES) });
+          boxes.push({ x: rect.minX + 1.2, y: 1.3, z: rect.maxZ + 0.18, sx: 1.0, sy: 2.2, sz: 0.1, color: CORNICE_TONE });
+        }
+        // Stucco pilasters between the window bays
+        for (let x = rect.minX + 0.35; x <= rect.maxX - 0.3; x += width(rect) - 0.7) {
+          boxes.push({ x, y: sillY + FLOOR / 2, z: rect.maxZ + 0.1, sx: 0.5, sy: FLOOR, sz: 0.2, color: CORNICE_TONE });
         }
         let column = 0;
         for (let x = rect.minX + 1.3; x <= rect.maxX - 1.3; x += 2.4, column += 1) {
@@ -542,6 +629,14 @@ function buildPlattenbau(blocker: Blocker, quality: Quality, batches: Batches): 
   const floors = 8;
   const bays = Math.floor(width(blocker) / 4);
   const bayWidth = width(blocker) / bays;
+  // Full-height painted panel strips: the classic post-war slab colour scheme
+  for (let bay = 0; bay < bays; bay += 3) {
+    const x = blocker.minX + bayWidth * (bay + 0.5);
+    boxes.push({ x, y: SLAB_HEIGHT / 2, z: blocker.maxZ + 0.02, sx: bayWidth - 0.4, sy: SLAB_HEIGHT - 1.0, sz: 0.05, color: SLAB_PANEL_TONES[(bay / 3) % SLAB_PANEL_TONES.length]! });
+  }
+  for (let z = blocker.minZ + 2; z < blocker.maxZ - 1; z += 6) {
+    boxes.push({ x: blocker.maxX + 0.02, y: SLAB_HEIGHT / 2, z, sx: 0.05, sy: SLAB_HEIGHT - 1.0, sz: 2.4, color: SLAB_PANEL_TONES[1] });
+  }
   for (let floor = 0; floor < floors; floor += 1) {
     const floorY = 0.8 + floor * FLOOR;
     boxes.push({ x: centerX(blocker), y: floorY, z: blocker.maxZ + 0.03, sx: width(blocker), sy: 0.12, sz: 0.08, color: SLAB_SEAM_TONE });
@@ -765,6 +860,7 @@ export function BerlinScene({ definition, seed, quality }: CitySceneProps) {
 
     buildStreets(definition, quality, batches);
     buildGroundShadows(blockers, batches);
+    buildCatenary(definition, quality, batches);
 
     for (const landmark of landmarks) {
       if (landmark.silhouette === 'gate') buildGate(landmark, quality, batches);
