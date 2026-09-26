@@ -58,7 +58,7 @@ function bakeFaceShading<G extends BufferGeometry>(geometry: G, flat = false): G
 
 const UNIT_BOX = bakeFaceShading(new BoxGeometry(1, 1, 1));
 const UNIT_CYLINDER = bakeFaceShading(new CylinderGeometry(0.5, 0.5, 1, 6));
-const UNIT_SPHERE = bakeFaceShading(new SphereGeometry(1, 7, 5));
+const UNIT_SPHERE = bakeFaceShading(new SphereGeometry(1, 6, 4));
 /** Square-based pyramid, unit footprint, axis aligned (Louvre, parasols, conifer trees). */
 const SQUARE_CONE = bakeFaceShading(new ConeGeometry(Math.SQRT1_2, 1, 4).rotateY(Math.PI / 4));
 /** Square frustum, unit footprint at the base, 0.55 at the top (mansard roofs, Eiffel shaft). */
@@ -162,17 +162,38 @@ function Instances({ geometry, items }: InstancesProps) {
     mesh.count = items.length;
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere();
   }, [items]);
 
   if (items.length === 0) return null;
-  return (
-    <instancedMesh
-      key={items.length}
-      ref={ref}
-      args={[geometry, WHITE, items.length]}
-      frustumCulled={false}
-    />
-  );
+  return <instancedMesh key={items.length} ref={ref} args={[geometry, WHITE, items.length]} />;
+}
+
+/**
+ * The chase camera only ever sees a fraction of the city, so every batch is split into spatial
+ * chunks that Three frustum-culls as a whole (each chunk computes its own bounding sphere).
+ * Items inside a chunk stay sorted top-down for early depth rejection.
+ */
+const CHUNK_SIZE = 48;
+
+interface Chunk {
+  readonly key: string;
+  readonly geometry: BufferGeometry;
+  readonly items: InstanceItem[];
+}
+
+function chunkBatch(name: string, geometry: BufferGeometry, items: readonly InstanceItem[]): Chunk[] {
+  const cells = new Map<string, Chunk>();
+  for (const item of items) {
+    const key = `${name}:${Math.floor(item.x / CHUNK_SIZE)}:${Math.floor(item.z / CHUNK_SIZE)}`;
+    let chunk = cells.get(key);
+    if (!chunk) {
+      chunk = { key, geometry, items: [] };
+      cells.set(key, chunk);
+    }
+    chunk.items.push(item);
+  }
+  return [...cells.values()];
 }
 
 // ---------------------------------------------------------------------------
@@ -346,14 +367,11 @@ function buildFacades(segments: readonly FacadeSegment[], rng: Rng, quality: Qua
     boxes.push(boxItem(grow(rect, 0.08), 0, PLINTH_HEIGHT, PLINTH_TONE));
     boxes.push(boxItem(grow(rect, 0.3), height - 0.5, 0.5, TRIM_TONE));
 
-    const chimneyCount = style === 'steep' ? 1 : 1 + rng.int(2);
-    for (let index = 0; index < chimneyCount; index += 1) {
+    {
       const cx = rect.minX + 1.5 + rng.next() * Math.max(0.1, width(rect) - 3);
       const cz = rect.minZ + 1.5 + rng.next() * Math.max(0.1, depth(rect) - 3);
       const chimneyY = style === 'steep' ? height + 1.2 : roofTop - 0.2;
-      boxes.push({ x: cx, y: chimneyY + 0.7, z: cz, sx: 0.8, sy: 1.4, sz: 0.8, color: CHIMNEY_TONE });
-      batches.cylinders.push({ x: cx - 0.2, y: chimneyY + 1.7, z: cz, sx: 0.3, sy: 0.6, sz: 0.3, color: IRON_TONE });
-      batches.cylinders.push({ x: cx + 0.2, y: chimneyY + 1.7, z: cz, sx: 0.3, sy: 0.6, sz: 0.3, color: IRON_TONE });
+      boxes.push({ x: cx, y: chimneyY + 0.7, z: cz, sx: 0.9, sy: 1.4, sz: 0.9, color: CHIMNEY_TONE });
     }
 
     // Haussmann balcony: a continuous ledge with an ink railing on the second floor of the street face.
@@ -366,10 +384,9 @@ function buildFacades(segments: readonly FacadeSegment[], rng: Rng, quality: Qua
     const streetFace = rect.maxZ >= outer.maxZ - 0.01;
     // Mansard dormers on the street slope, and zinc ridge caps on steep roofs.
     if (streetFace && style === 'mansard') {
-      for (let x = rect.minX + 1.6; x <= rect.maxX - 1.6; x += 3.2) {
-        boxes.push({ x, y: height + 0.9, z: eaves.maxZ - 0.55, sx: 1.1, sy: 1.1, sz: 0.9, color: stone });
-        boxes.push({ x, y: height + 0.9, z: eaves.maxZ - 0.08, sx: 0.7, sy: 0.7, sz: 0.06, color: WINDOW_TONE });
-        frustums.push({ x, y: height + 1.6, z: eaves.maxZ - 0.55, sx: 1.3, sy: 0.35, sz: 1.1, color: roof });
+      for (let x = rect.minX + 2; x <= rect.maxX - 2; x += 4.5) {
+        boxes.push({ x, y: height + 0.9, z: eaves.maxZ - 0.55, sx: 1.2, sy: 1.1, sz: 0.9, color: stone });
+        frustums.push({ x, y: height + 1.6, z: eaves.maxZ - 0.55, sx: 1.4, sy: 0.35, sz: 1.1, color: roof });
       }
     }
     if (style === 'steep') {
@@ -381,30 +398,31 @@ function buildFacades(segments: readonly FacadeSegment[], rng: Rng, quality: Qua
     const awningBase = rng.int(AWNING_TONES.length);
 
     // The chase camera always looks toward -Z, so the -Z facade is never on screen: skip its windows.
+    // Street windows are individual; the oblique side faces get one ribbon window per floor.
+    const topRowY = 2.6 + 3 * Math.floor((height - 1.6 - 2.6) / 3) + 0.8;
+    if (streetFace && height >= 10) {
+      boxes.push({ x: centerX(rect), y: topRowY - 0.9, z: rect.maxZ + 0.3, sx: width(rect) - 0.6, sy: 0.14, sz: 0.6, color: TRIM_TONE });
+      boxes.push({ x: centerX(rect), y: topRowY - 0.5, z: rect.maxZ + 0.56, sx: width(rect) - 0.6, sy: 0.7, sz: 0.06, color: BALCONY_TONE });
+    }
     for (let y = 2.6; y <= height - 1.6; y += 3) {
       const rowY = y + 0.8;
       if (streetFace) {
         let column = 0;
-        for (let x = rect.minX + 1.4; x <= rect.maxX - 1.4; x += 2.6) {
-          boxes.push({ x, y: rowY, z: rect.maxZ + 0.04, sx: 1.1, sy: 1.6, sz: 0.1, color: WINDOW_TONE });
-          if (y === 2.6 && shopfront) {
-            boxes.push({ x, y: 2.1, z: rect.maxZ + 0.55, sx: 1.9, sy: 0.12, sz: 1.1, rx: 0.32, color: AWNING_TONES[(awningBase + (column >> 1)) % AWNING_TONES.length]! });
-          }
-          if (y + 3 > height - 1.6 && height >= 10) {
-            boxes.push({ x, y: rowY - 0.9, z: rect.maxZ + 0.3, sx: 1.6, sy: 0.14, sz: 0.6, color: TRIM_TONE });
-            boxes.push({ x, y: rowY - 0.5, z: rect.maxZ + 0.56, sx: 1.6, sy: 0.7, sz: 0.06, color: BALCONY_TONE });
+        for (let x = rect.minX + 1.5; x <= rect.maxX - 1.5; x += 3) {
+          boxes.push({ x, y: rowY, z: rect.maxZ + 0.04, sx: 1.2, sy: 1.6, sz: 0.1, color: WINDOW_TONE });
+          if (y === 2.6 && shopfront && column % 2 === 0) {
+            const pair = x + 3 <= rect.maxX - 1.5;
+            boxes.push({ x: pair ? x + 1.5 : x, y: 2.1, z: rect.maxZ + 0.55, sx: pair ? 4.6 : 2.0, sy: 0.12, sz: 1.1, rx: 0.32, color: AWNING_TONES[(awningBase + (column >> 1)) % AWNING_TONES.length]! });
           }
           column += 1;
         }
       }
-      if (rect.minX <= outer.minX + 0.01 || rect.maxX >= outer.maxX - 0.01) {
-        for (let z = rect.minZ + 1.4; z <= rect.maxZ - 1.4; z += 2.6) {
-          if (rect.minX <= outer.minX + 0.01) {
-            boxes.push({ x: rect.minX - 0.04, y: rowY, z, sx: 0.1, sy: 1.6, sz: 1.1, color: WINDOW_TONE });
-          }
-          if (rect.maxX >= outer.maxX - 0.01) {
-            boxes.push({ x: rect.maxX + 0.04, y: rowY, z, sx: 0.1, sy: 1.6, sz: 1.1, color: WINDOW_TONE });
-          }
+      if (depth(rect) >= 4) {
+        if (rect.minX <= outer.minX + 0.01) {
+          boxes.push({ x: rect.minX - 0.04, y: rowY, z: centerZ(rect), sx: 0.1, sy: 1.6, sz: depth(rect) - 2.4, color: WINDOW_TONE });
+        }
+        if (rect.maxX >= outer.maxX - 0.01) {
+          boxes.push({ x: rect.maxX + 0.04, y: rowY, z: centerZ(rect), sx: 0.1, sy: 1.6, sz: depth(rect) - 2.4, color: WINDOW_TONE });
         }
       }
     }
@@ -443,7 +461,7 @@ interface Batches {
 
 function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batches: Batches): void {
   const placed: [number, number][] = [];
-  const target = quality === 'low' ? 24 : 64;
+  const target = quality === 'low' ? 20 : 44;
   const attempts = target * 8;
   const { bounds } = definition;
 
@@ -489,7 +507,6 @@ function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batc
           continue;
         }
         batches.cylinders.push({ x, y: 1.5, z, sx: 0.3, sy: 3.0, sz: 0.3, color: LAMP_POST_TONE });
-        batches.boxes.push({ x, y: 0.2, z, sx: 0.8, sy: 0.4, sz: 0.8, color: LAMP_POST_TONE });
         batches.boxes.push({ x, y: 3.3, z, sx: 0.8, sy: 0.8, sz: 0.8, color: LAMP_GLOW_TONE });
         batches.cones.push({ x, y: 3.9, z, sx: 1.0, sy: 0.4, sz: 1.0, color: LAMP_POST_TONE });
       }
@@ -506,7 +523,7 @@ function buildStreetFurniture(definition: CityDefinition, rng: Rng, batches: Bat
   for (const road of definition.roads) {
     const horizontal = width(road) >= depth(road);
     const length = horizontal ? width(road) : depth(road);
-    for (let along = 4.5; along < length; along += 18) {
+    for (let along = 4.5; along < length; along += 36) {
       for (const side of [-1, 1] as const) {
         const x = horizontal ? road.minX + along : centerX(road) + side * (width(road) / 2 + 1.0);
         const z = horizontal ? centerZ(road) + side * (depth(road) / 2 + 1.0) : road.minZ + along;
@@ -514,7 +531,6 @@ function buildStreetFurniture(definition: CityDefinition, rng: Rng, batches: Bat
         const ry = horizontal ? 0 : Math.PI / 2;
         batches.boxes.push({ x, y: 0.5, z, sx: 2.0, sy: 0.14, sz: 0.6, ry, color: '#7a5a3a' });
         batches.boxes.push({ x, y: 0.9, z, sx: 2.0, sy: 0.5, sz: 0.1, ry, color: '#7a5a3a' });
-        batches.boxes.push({ x, y: 0.22, z, sx: 1.6, sy: 0.44, sz: 0.4, ry, color: INK });
       }
     }
   }
@@ -540,13 +556,13 @@ function buildStreetFurniture(definition: CityDefinition, rng: Rng, batches: Bat
     for (const b of roads) {
       if (width(b) < depth(b)) continue;
       for (const z of [b.minZ - 1.4, b.maxZ + 1.4]) {
-        for (let x = a.minX + 0.6; x < a.maxX - 0.3; x += 1.2) {
-          batches.flats.push(flatItem({ minX: x, maxX: x + 0.6, minZ: z - 0.9, maxZ: z + 0.9 }, 0.024, ROAD_LINE_TONE));
+        for (let x = a.minX + 0.8; x < a.maxX - 0.6; x += 2) {
+          batches.flats.push(flatItem({ minX: x, maxX: x + 1, minZ: z - 0.9, maxZ: z + 0.9 }, 0.024, ROAD_LINE_TONE));
         }
       }
       for (const x of [a.minX - 1.4, a.maxX + 1.4]) {
-        for (let z = b.minZ + 0.6; z < b.maxZ - 0.3; z += 1.2) {
-          batches.flats.push(flatItem({ minX: x - 0.9, maxX: x + 0.9, minZ: z, maxZ: z + 0.6 }, 0.024, ROAD_LINE_TONE));
+        for (let z = b.minZ + 0.8; z < b.maxZ - 0.6; z += 2) {
+          batches.flats.push(flatItem({ minX: x - 0.9, maxX: x + 0.9, minZ: z, maxZ: z + 1 }, 0.024, ROAD_LINE_TONE));
         }
       }
     }
@@ -588,14 +604,12 @@ function buildTerraces(definition: CityDefinition, rng: Rng, batches: Batches): 
     });
     if (!ok) continue;
     const awning = rng.pick(AWNING_TONES);
-    for (let x = x0; x < x0 + 6; x += 1) {
-      batches.boxes.push({ x: x + 0.5, y: 3.1, z: blocker.maxZ + 0.9, sx: 1, sy: 0.14, sz: 1.8, rx: 0.3, color: Math.round(x - x0) % 2 === 0 ? awning : CREAM });
+    for (let x = x0; x < x0 + 6; x += 2) {
+      batches.boxes.push({ x: x + 1, y: 3.1, z: blocker.maxZ + 0.9, sx: 2, sy: 0.14, sz: 1.8, rx: 0.3, color: Math.round(x - x0) % 4 === 0 ? awning : CREAM });
     }
     for (let x = x0 + 1.2; x < x0 + 6; x += 2.4) {
-      batches.cylinders.push({ x, y: 0.45, z, sx: 0.16, sy: 0.9, sz: 0.16, color: INK });
+      batches.cylinders.push({ x, y: 0.5, z, sx: 0.16, sy: 1.0, sz: 0.16, color: INK });
       batches.cylinders.push({ x, y: 0.95, z, sx: 1.1, sy: 0.1, sz: 1.1, color: TABLE_TONE });
-      batches.boxes.push({ x: x - 0.85, y: 0.5, z, sx: 0.45, sy: 0.1, sz: 0.45, color: INK });
-      batches.boxes.push({ x: x + 0.85, y: 0.5, z, sx: 0.45, sy: 0.1, sz: 0.45, color: INK });
     }
   }
 }
@@ -612,13 +626,7 @@ function buildRiver(segments: readonly Blocker[], bridges: readonly RectXZ[], rn
       batches.boxes.push({ x: bx, y: 0.95, z: bz + 0.6, sx: 1.4, sy: 0.6, sz: 3.6, color: CREAM });
       batches.boxes.push({ x: bx, y: 1.35, z: bz + 1.4, sx: 0.9, sy: 0.3, sz: 1.2, color: HOT_PINK });
     }
-    if (quality !== 'low') {
-      // Ripple glints: short pale streaks drifting down the current.
-      for (let z = segment.minZ + 2; z < segment.maxZ - 2; z += 4.5) {
-        const x = segment.minX + 3 + rng.next() * (width(segment) - 6);
-        batches.flats.push(flatItem({ minX: x - 0.9, maxX: x + 0.9, minZ: z, maxZ: z + 0.18 }, 0.034, '#8fe6f7'));
-      }
-    }
+
     // Quays: a lower stone walkway inside the river blocker, a parapet wall at street level, bollards.
     for (const side of [-1, 1] as const) {
       const walk: RectXZ = side < 0 ? { ...segment, maxX: segment.minX + 2 } : { ...segment, minX: segment.maxX - 2 };
@@ -627,8 +635,8 @@ function buildRiver(segments: readonly Blocker[], bridges: readonly RectXZ[], rn
       batches.boxes.push(boxItem(wall, 0, 0.9, BRIDGE_TONE));
       if (quality === 'low') continue;
       const x = side < 0 ? segment.minX + 1.4 : segment.maxX - 1.4;
-      for (let z = segment.minZ + 3; z < segment.maxZ - 2; z += 6) {
-        batches.cylinders.push({ x, y: 0.6, z, sx: 0.4, sy: 0.6, sz: 0.4, color: IRON_TONE });
+      for (let z = segment.minZ + 3; z < segment.maxZ - 2; z += 12) {
+        batches.cylinders.push({ x, y: 0.6, z, sx: 0.45, sy: 0.6, sz: 0.45, color: IRON_TONE });
       }
       for (let z = segment.minZ + 6; z < segment.maxZ - 4; z += 12) {
         const leaf = PLANE_LEAF_TONES[Math.round(z / 12) % PLANE_LEAF_TONES.length]!;
@@ -645,8 +653,8 @@ function buildRiver(segments: readonly Blocker[], bridges: readonly RectXZ[], rn
     // Balustrade posts and a lamp at each corner of the parapets.
     for (const z of [bridge.minZ + 0.3, bridge.maxZ - 0.3]) {
       if (quality !== 'low') {
-        for (let x = bridge.minX; x <= bridge.maxX; x += 2) {
-          batches.boxes.push({ x, y: 1.15, z, sx: 0.4, sy: 0.3, sz: 0.6, color: BRIDGE_TONE });
+        for (let x = bridge.minX; x <= bridge.maxX; x += 4) {
+          batches.boxes.push({ x, y: 1.15, z, sx: 0.5, sy: 0.3, sz: 0.6, color: BRIDGE_TONE });
         }
       }
       for (const x of [bridge.minX - 0.6, bridge.maxX + 0.6]) {
@@ -840,19 +848,17 @@ function buildLouvreWings(footprint: RectXZ, quality: Quality, batches: Batches)
     batches.boxes.push(boxItem(grow(rect, 0.35), wingHeight - 0.5, 0.5, TRIM_TONE));
   }
   // Pilasters and tall arched windows on the courtyard faces.
-  for (let x = north.minX + pavilion + 1; x < north.maxX - pavilion; x += 2.2) {
+  for (let x = north.minX + pavilion + 1; x < north.maxX - pavilion; x += 3.3) {
     batches.boxes.push({ x, y: wingHeight / 2, z: north.maxZ + 0.12, sx: 0.4, sy: wingHeight, sz: 0.24, color: TRIM_TONE });
     batches.boxes.push({ x: x + 1.1, y: 3.2, z: north.maxZ + 0.05, sx: 0.9, sy: 3.2, sz: 0.1, color: WINDOW_TONE });
   }
-  for (let z = west.minZ + 1; z < footprint.maxZ - pavilion; z += 2.2) {
+  for (let z = west.minZ + 1; z < footprint.maxZ - pavilion; z += 3.3) {
     batches.boxes.push({ x: west.maxX + 0.12, y: wingHeight / 2, z, sx: 0.24, sy: wingHeight, sz: 0.4, color: TRIM_TONE });
     batches.boxes.push({ x: east.minX - 0.12, y: wingHeight / 2, z, sx: 0.24, sy: wingHeight, sz: 0.4, color: TRIM_TONE });
     batches.boxes.push({ x: west.maxX + 0.05, y: 3.2, z: z + 1.1, sx: 0.1, sy: 3.2, sz: 0.9, color: WINDOW_TONE });
     batches.boxes.push({ x: east.minX - 0.05, y: 3.2, z: z + 1.1, sx: 0.1, sy: 3.2, sz: 0.9, color: WINDOW_TONE });
   }
-  for (let x = footprint.minX + 1.5; x < footprint.maxX - 1; x += 2.6) {
-    batches.boxes.push({ x, y: 3.4, z: footprint.minZ - 0.05, sx: 1.0, sy: 2.6, sz: 0.1, color: WINDOW_TONE });
-  }
+
 }
 
 function buildCafe(landmark: Landmark, quality: Quality, batches: Batches): void {
@@ -883,8 +889,7 @@ function buildCafe(landmark: Landmark, quality: Quality, batches: Batches): void
     batches.cylinders.push({ x, y: 0.45, z, sx: 0.18, sy: 0.9, sz: 0.18, color: LAMP_POST_TONE });
     batches.cylinders.push({ x, y: 0.95, z, sx: 1.3, sy: 0.12, sz: 1.3, color: TABLE_TONE });
     for (const side of [-1, 1] as const) {
-      batches.boxes.push({ x: x + side * 1.0, y: 0.5, z, sx: 0.5, sy: 0.12, sz: 0.5, color: INK });
-      batches.boxes.push({ x: x + side * 1.2, y: 0.85, z, sx: 0.1, sy: 0.8, sz: 0.5, color: INK });
+      batches.boxes.push({ x: x + side * 1.1, y: 0.5, z, sx: 0.5, sy: 0.12, sz: 0.5, color: INK });
     }
     if (parasol % 2 === 1) {
       batches.cylinders.push({ x, y: 1.6, z, sx: 0.12, sy: 1.4, sz: 0.12, color: LAMP_POST_TONE });
@@ -896,7 +901,7 @@ function buildCafe(landmark: Landmark, quality: Quality, batches: Batches): void
 
 /** Low blocks just outside the playable bounds: a soft lavender skyline for background depth. */
 function buildBackdrop(bounds: RectXZ, rng: Rng, quality: Quality, batches: Batches): void {
-  const step = quality === 'low' ? 16 : 9;
+  const step = quality === 'low' ? 16 : 12;
   const ring = grow(bounds, 9);
   const push = (x: number, z: number, tall: boolean) => {
     const w = 5 + rng.next() * 5;
@@ -990,17 +995,21 @@ export function ParisScene({ definition, seed, quality }: CitySceneProps) {
     }
 
     for (const batch of Object.values(batches)) batch.sort(byTopDescending);
-    return batches;
+    return [
+      ...chunkBatch('flat', UNIT_PLANE, batches.flats),
+      ...chunkBatch('box', UNIT_BOX, batches.boxes),
+      ...chunkBatch('frustum', FRUSTUM, batches.frustums),
+      ...chunkBatch('cone', SQUARE_CONE, batches.cones),
+      ...chunkBatch('cylinder', UNIT_CYLINDER, batches.cylinders),
+      ...chunkBatch('sphere', UNIT_SPHERE, batches.spheres),
+    ];
   }, [definition, seed, quality, bounds, blockers, landmarks, roads, sockets]);
 
   return (
     <group>
-      <Instances geometry={UNIT_PLANE} items={layout.flats} />
-      <Instances geometry={UNIT_BOX} items={layout.boxes} />
-      <Instances geometry={FRUSTUM} items={layout.frustums} />
-      <Instances geometry={SQUARE_CONE} items={layout.cones} />
-      <Instances geometry={UNIT_CYLINDER} items={layout.cylinders} />
-      <Instances geometry={UNIT_SPHERE} items={layout.spheres} />
+      {layout.map((chunk) => (
+        <Instances key={chunk.key} geometry={chunk.geometry} items={chunk.items} />
+      ))}
     </group>
   );
 }
