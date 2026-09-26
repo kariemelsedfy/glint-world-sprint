@@ -147,16 +147,16 @@ function shortestAngle(from: number, to: number): number {
 }
 
 // Reusable geometry and materials: created once per module, shared by all mounts.
-const earthGeometry = new SphereGeometry(GLOBE_RADIUS, 40, 28);
-const earthGeometryLow = new SphereGeometry(GLOBE_RADIUS, 28, 20);
+const earthGeometry = new SphereGeometry(GLOBE_RADIUS, 36, 24);
+const earthGeometryLow = new SphereGeometry(GLOBE_RADIUS, 24, 16);
 // Glow is an annulus hugging the silhouette so only the halo band pays fragment cost, not the whole disc.
 // RingGeometry maps UVs over a 2*outer square, which matches the radial glow texture exactly.
-const GLOW_OUTER = GLOBE_RADIUS * 1.25;
-const glowGeometry = new RingGeometry(GLOBE_RADIUS * 0.985, GLOW_OUTER, 48, 1);
-const pinStemGeometry = new ConeGeometry(0.3, 1.4, 8);
-const pinHeadGeometry = new SphereGeometry(0.55, 12, 8);
+const GLOW_OUTER = GLOBE_RADIUS * 1.16;
+const glowGeometry = new RingGeometry(GLOBE_RADIUS * 0.985, GLOW_OUTER, 40, 1);
+const pinStemGeometry = new ConeGeometry(0.3, 1.4, 7);
+const pinHeadGeometry = new SphereGeometry(0.55, 10, 7);
 // Slightly larger back-face sphere gives the head a chunky ink outline for free (no post-processing).
-const pinOutlineGeometry = new SphereGeometry(0.68, 12, 8);
+const pinOutlineGeometry = new SphereGeometry(0.68, 10, 7);
 const focusRingGeometry = new TorusGeometry(1.25, 0.1, 6, 28);
 
 let glowMaterial: MeshBasicMaterial | null = null;
@@ -169,7 +169,7 @@ function getGlowMaterial(): MeshBasicMaterial {
   });
   return glowMaterial;
 }
-const pinStemMaterial = new MeshToonMaterial({ color: new Color(CREAM) });
+const pinStemMaterial = new MeshBasicMaterial({ color: new Color(CREAM) });
 const pinOutlineMaterial = new MeshBasicMaterial({ color: new Color(INK), side: BackSide });
 const focusRingMaterial = new MeshBasicMaterial({ color: new Color(YELLOW) });
 const starMaterial = new PointsMaterial({ color: new Color('#dfe9ff'), size: 0.28, sizeAttenuation: true, transparent: true, opacity: 0.9 });

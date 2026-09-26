@@ -3,7 +3,7 @@
  * Hand-simplified continent outlines (lat/lon polygons, no map data or imagery) painted once into a
  * cached canvas; deserts, caps, coasts and clouds are layered on top. Seeded RNG keeps every load identical.
  */
-import { CanvasTexture, SRGBColorSpace, RepeatWrapping } from 'three';
+import { CanvasTexture, LinearFilter, SRGBColorSpace, RepeatWrapping } from 'three';
 import { createRng, hashSeed } from '@/shared/seed';
 
 export const OCEAN = '#2a9fe0';
@@ -271,6 +271,8 @@ function makeCanvasTexture(width: number, height: number, paint: (ctx: CanvasRen
   texture.colorSpace = SRGBColorSpace;
   texture.wrapS = RepeatWrapping;
   texture.anisotropy = 1;
+  texture.generateMipmaps = false;
+  texture.minFilter = LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
