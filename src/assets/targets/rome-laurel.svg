@@ -1,7 +1,38 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 112" width="112" height="112" role="img" aria-label="Laurel">
-  <rect width="112" height="112" rx="14" fill="#28502F"/>
-  <rect x="5" y="5" width="102" height="102" rx="10" fill="none" stroke="#211333" stroke-width="6"/>
-  <g fill="#F2D06B" stroke="#F2D06B" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M56 92C30 76 22 52 26 24c18 4 30 20 30 44 0-24 12-40 30-44 4 28-4 52-30 68z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Golden laurel wreath">
+  <rect width="256" height="256" rx="18" fill="#7146C5"/>
+  <circle cx="128" cy="128" r="100" fill="#B6A1E8" stroke="#211333" stroke-width="6"/>
+  <!-- wreath stems: two arcs meeting at the bottom, open at the top -->
+  <path d="M128 214 C70 210 40 160 52 92" fill="none" stroke="#211333" stroke-width="12" stroke-linecap="round"/>
+  <path d="M128 214 C186 210 216 160 204 92" fill="none" stroke="#211333" stroke-width="12" stroke-linecap="round"/>
+  <path d="M128 214 C70 210 40 160 52 92" fill="none" stroke="#C99A2E" stroke-width="6" stroke-linecap="round"/>
+  <path d="M128 214 C186 210 216 160 204 92" fill="none" stroke="#C99A2E" stroke-width="6" stroke-linecap="round"/>
+  <!-- leaves left (pointing up along the stem) -->
+  <g fill="#FFD963" stroke="#211333" stroke-width="5" stroke-linejoin="round">
+    <path d="M118 206 C104 196 100 182 108 170 C120 178 124 192 118 206 Z"/>
+    <path d="M92 196 C78 188 72 174 78 162 C92 168 96 182 92 196 Z"/>
+    <path d="M70 176 C58 166 54 152 60 140 C74 146 76 162 70 176 Z"/>
+    <path d="M56 148 C46 138 44 122 52 112 C64 120 64 136 56 148 Z"/>
+    <path d="M52 116 C46 104 48 88 58 80 C68 90 64 106 52 116 Z"/>
+    <!-- inner leaves -->
+    <path d="M108 190 C114 176 112 162 100 154 C92 166 96 182 108 190 Z" fill="#F3B84B"/>
+    <path d="M84 172 C90 158 86 144 74 138 C68 150 72 166 84 172 Z" fill="#F3B84B"/>
+    <path d="M70 140 C74 126 70 112 60 106 C54 118 58 132 70 140 Z" fill="#F3B84B"/>
   </g>
+  <!-- leaves right (mirrored) -->
+  <g fill="#FFD963" stroke="#211333" stroke-width="5" stroke-linejoin="round">
+    <path d="M138 206 C152 196 156 182 148 170 C136 178 132 192 138 206 Z"/>
+    <path d="M164 196 C178 188 184 174 178 162 C164 168 160 182 164 196 Z"/>
+    <path d="M186 176 C198 166 202 152 196 140 C182 146 180 162 186 176 Z"/>
+    <path d="M200 148 C210 138 212 122 204 112 C192 120 192 136 200 148 Z"/>
+    <path d="M204 116 C210 104 208 88 198 80 C188 90 192 106 204 116 Z"/>
+    <path d="M148 190 C142 176 144 162 156 154 C164 166 160 182 148 190 Z" fill="#F3B84B"/>
+    <path d="M172 172 C166 158 170 144 182 138 C188 150 184 166 172 172 Z" fill="#F3B84B"/>
+    <path d="M186 140 C182 126 186 112 196 106 C202 118 198 132 186 140 Z" fill="#F3B84B"/>
+  </g>
+  <!-- ribbon knot at bottom -->
+  <path d="M112 210 L128 224 L144 210 L128 200 Z" fill="#F43FAB" stroke="#211333" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M116 222 L104 240 M140 222 L152 240" stroke="#F43FAB" stroke-width="8" stroke-linecap="round"/>
+  <path d="M116 222 L104 240 M140 222 L152 240" stroke="#211333" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+  <!-- centre highlight -->
+  <path d="M100 104 L156 104" stroke="#FFF5E9" stroke-width="5" stroke-linecap="round" opacity="0.4"/>
 </svg>

@@ -1,7 +1,58 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 112" width="112" height="112" role="img" aria-label="Gate">
-  <rect width="112" height="112" rx="14" fill="#3B3550"/>
-  <rect x="5" y="5" width="102" height="102" rx="10" fill="none" stroke="#211333" stroke-width="6"/>
-  <g fill="#F0E2C0" stroke="#F0E2C0" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M16 84h80v10H16z M24 40h8v44h-8z M44 40h8v44h-8z M62 40h8v44h-8z M82 40h8v44h-8z M14 24h84v14H14z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Brandenburg Gate miniature">
+  <rect width="256" height="256" rx="18" fill="#FFD963"/>
+  <circle cx="128" cy="120" r="96" fill="#FFF5E9" stroke="#211333" stroke-width="6"/>
+  <!-- ground plinth -->
+  <rect x="28" y="196" width="200" height="22" rx="4" fill="#B6A1E8" stroke="#211333" stroke-width="6"/>
+  <!-- base steps -->
+  <rect x="40" y="184" width="176" height="14" fill="#D9CBB3" stroke="#211333" stroke-width="5"/>
+  <!-- columns -->
+  <g fill="#E8DCC4" stroke="#211333" stroke-width="5">
+    <rect x="48" y="112" width="18" height="74"/>
+    <rect x="78" y="112" width="18" height="74"/>
+    <rect x="108" y="112" width="18" height="74"/>
+    <rect x="130" y="112" width="18" height="74"/>
+    <rect x="160" y="112" width="18" height="74"/>
+    <rect x="190" y="112" width="18" height="74"/>
   </g>
+  <!-- column fluting shade -->
+  <path d="M60 116 V182 M90 116 V182 M120 116 V182 M142 116 V182 M172 116 V182 M202 116 V182" stroke="#B9A88A" stroke-width="4"/>
+  <!-- capitals -->
+  <g fill="#FFF5E9" stroke="#211333" stroke-width="4">
+    <rect x="44" y="104" width="26" height="10"/>
+    <rect x="74" y="104" width="26" height="10"/>
+    <rect x="104" y="104" width="26" height="10"/>
+    <rect x="126" y="104" width="26" height="10"/>
+    <rect x="156" y="104" width="26" height="10"/>
+    <rect x="186" y="104" width="26" height="10"/>
+  </g>
+  <!-- entablature -->
+  <rect x="40" y="84" width="176" height="22" fill="#E8DCC4" stroke="#211333" stroke-width="6"/>
+  <rect x="40" y="72" width="176" height="14" fill="#FFF5E9" stroke="#211333" stroke-width="5"/>
+  <!-- attic block -->
+  <rect x="88" y="52" width="80" height="22" fill="#E8DCC4" stroke="#211333" stroke-width="6"/>
+  <!-- quadriga: chariot + four horses + winged figure -->
+  <g stroke="#211333" stroke-width="4" stroke-linejoin="round" fill="#3E8E5E">
+    <!-- horses -->
+    <path d="M96 52 V40 L104 30 L110 36 L112 52 Z"/>
+    <path d="M110 52 V40 L118 30 L124 36 L126 52 Z"/>
+    <path d="M130 52 V40 L138 30 L144 36 L146 52 Z"/>
+    <path d="M144 52 V40 L152 30 L158 36 L160 52 Z"/>
+    <!-- chariot -->
+    <path d="M118 44 H146 L142 52 H122 Z" fill="#2F7A4B"/>
+    <!-- figure -->
+    <rect x="128" y="20" width="8" height="24" fill="#3E8E5E"/>
+    <circle cx="132" cy="16" r="5" fill="#3E8E5E"/>
+    <!-- wings -->
+    <path d="M128 26 L112 14 L124 30 Z M136 26 L152 14 L140 30 Z" fill="#5FB07A"/>
+  </g>
+  <!-- staff -->
+  <path d="M138 10 V30" stroke="#211333" stroke-width="3" stroke-linecap="round"/>
+  <!-- shadow inside passageways -->
+  <g fill="#B6A1E8" opacity="0.6">
+    <rect x="66" y="114" width="12" height="70"/>
+    <rect x="96" y="114" width="12" height="70"/>
+    <rect x="148" y="114" width="12" height="70"/>
+    <rect x="178" y="114" width="12" height="70"/>
+  </g>
+  <rect x="126" y="114" width="4" height="70" fill="#7146C5"/>
 </svg>

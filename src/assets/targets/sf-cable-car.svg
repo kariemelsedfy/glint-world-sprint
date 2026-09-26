@@ -1,7 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 112" width="112" height="112" role="img" aria-label="Cable car">
-  <rect width="112" height="112" rx="14" fill="#33465E"/>
-  <rect x="5" y="5" width="102" height="102" rx="10" fill="none" stroke="#211333" stroke-width="6"/>
-  <g fill="#F2705A" stroke="#F2705A" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M22 34h68v36H22z M30 42h20v18H30z M62 42h20v18H62z M34 78a8 8 0 1 0 0.1 0z M78 78a8 8 0 1 0 0.1 0z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="San Francisco cable-car model">
+  <rect width="256" height="256" rx="18" fill="#22C4EA"/>
+  <!-- hill street -->
+  <path d="M0 200 L256 150 V256 H0 Z" fill="#B6A1E8"/>
+  <path d="M0 200 L256 150" stroke="#211333" stroke-width="6" stroke-linecap="round"/>
+  <!-- cable slot -->
+  <path d="M0 214 L256 164" stroke="#7146C5" stroke-width="4" stroke-dasharray="14 10"/>
+  <!-- car body (rotated to sit on hill) -->
+  <g transform="translate(128 150) rotate(-11)">
+    <!-- wheels -->
+    <circle cx="-56" cy="34" r="12" fill="#211333"/>
+    <circle cx="56" cy="34" r="12" fill="#211333"/>
+    <circle cx="-56" cy="34" r="5" fill="#B6A1E8"/>
+    <circle cx="56" cy="34" r="5" fill="#B6A1E8"/>
+    <!-- undercarriage -->
+    <rect x="-82" y="22" width="164" height="12" rx="4" fill="#7146C5" stroke="#211333" stroke-width="5"/>
+    <!-- lower body maroon -->
+    <rect x="-84" y="-30" width="168" height="56" rx="6" fill="#9E1B2E" stroke="#211333" stroke-width="6"/>
+    <!-- open-air end sections -->
+    <rect x="-84" y="-30" width="40" height="56" rx="6" fill="#B8253A" stroke="#211333" stroke-width="6"/>
+    <rect x="44" y="-30" width="40" height="56" rx="6" fill="#B8253A" stroke="#211333" stroke-width="6"/>
+    <!-- cream centre cabin with windows -->
+    <rect x="-44" y="-30" width="88" height="34" fill="#FFF5E9" stroke="#211333" stroke-width="5"/>
+    <g fill="#22C4EA" stroke="#211333" stroke-width="4">
+      <rect x="-38" y="-24" width="22" height="22" rx="3"/>
+      <rect x="-11" y="-24" width="22" height="22" rx="3"/>
+      <rect x="16" y="-24" width="22" height="22" rx="3"/>
+    </g>
+    <!-- poles for standing riders -->
+    <path d="M-72 -30 V24 M-56 -30 V24 M56 -30 V24 M72 -30 V24" stroke="#FFD963" stroke-width="4" stroke-linecap="round"/>
+    <!-- route board -->
+    <rect x="-30" y="2" width="60" height="16" rx="3" fill="#FFD963" stroke="#211333" stroke-width="4"/>
+    <path d="M-20 10 h40" stroke="#211333" stroke-width="4" stroke-linecap="round" stroke-dasharray="6 5"/>
+    <!-- roof -->
+    <path d="M-92 -30 Q0 -66 92 -30 Z" fill="#7146C5" stroke="#211333" stroke-width="6" stroke-linejoin="round"/>
+    <rect x="-24" y="-56" width="48" height="12" rx="4" fill="#FFD963" stroke="#211333" stroke-width="5"/>
+    <!-- bell -->
+    <path d="M0 -60 v-8" stroke="#211333" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="0" cy="-74" r="7" fill="#FFD963" stroke="#211333" stroke-width="4"/>
   </g>
 </svg>

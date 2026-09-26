@@ -1,7 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 112" width="112" height="112" role="img" aria-label="Iron tower">
-  <rect width="112" height="112" rx="14" fill="#2B3F6B"/>
-  <rect x="5" y="5" width="102" height="102" rx="10" fill="none" stroke="#211333" stroke-width="6"/>
-  <g fill="#F3B84B" stroke="#F3B84B" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M56 12 84 96H70L56 56 42 96H28z M40 70h32v8H40z"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Eiffel tower souvenir token">
+  <rect width="256" height="256" rx="18" fill="#B6A1E8"/>
+  <!-- sky glow -->
+  <circle cx="128" cy="128" r="96" fill="#FFF5E9" stroke="#211333" stroke-width="6"/>
+  <circle cx="128" cy="128" r="84" fill="none" stroke="#7146C5" stroke-width="3" opacity="0.5"/>
+  <!-- ground -->
+  <path d="M52 200 H204" stroke="#211333" stroke-width="6" stroke-linecap="round"/>
+  <!-- tower legs -->
+  <path d="M128 40 C132 90 150 150 190 200 H166 C150 172 138 160 128 160 C118 160 106 172 90 200 H66 C106 150 124 90 128 40 Z" fill="#7146C5" stroke="#211333" stroke-width="6" stroke-linejoin="round"/>
+  <!-- arch -->
+  <path d="M96 200 C104 176 116 166 128 166 C140 166 152 176 160 200" fill="#FFF5E9" stroke="#211333" stroke-width="5"/>
+  <!-- platforms -->
+  <rect x="108" y="102" width="40" height="10" rx="3" fill="#FFD963" stroke="#211333" stroke-width="4"/>
+  <rect x="88" y="150" width="80" height="12" rx="3" fill="#FFD963" stroke="#211333" stroke-width="4"/>
+  <!-- lattice -->
+  <path d="M118 112 L138 150 M138 112 L118 150 M112 162 L96 198 M144 162 L160 198 M126 60 L132 100 M130 60 L124 100" fill="none" stroke="#211333" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+  <!-- antenna and beacon -->
+  <path d="M128 40 V22" stroke="#211333" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="128" cy="20" r="7" fill="#FFD963" stroke="#211333" stroke-width="4"/>
+  <!-- twinkle -->
+  <path d="M74 80 l0 18 M65 89 l18 0" stroke="#F43FAB" stroke-width="5" stroke-linecap="round"/>
+  <path d="M186 70 l0 12 M180 76 l12 0" stroke="#22C4EA" stroke-width="4" stroke-linecap="round"/>
 </svg>
