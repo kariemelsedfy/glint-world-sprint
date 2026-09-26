@@ -54,7 +54,7 @@ export function ResultsScreen({ result, model, actions }: ResultsScreenProps) {
               <div className="min-w-0">
                 <span className="text-xs font-extrabold block truncate">Best on this device · {currentLevel?.title}</span>
                 <span className="text-[11px] font-semibold text-[var(--ar-ink-soft)]">
-                  {result.practice ? 'Practice run (paused) — not saved as a best' : result.sessionOnly ? 'Session only (storage unavailable)' : 'Saved on this device'}
+                  {result.practice ? 'Practice run — paused, not saved as a best' : result.sessionOnly ? 'Session only (storage unavailable)' : 'Saved on this device'}
                 </span>
               </div>
               <div className="text-right shrink-0">
