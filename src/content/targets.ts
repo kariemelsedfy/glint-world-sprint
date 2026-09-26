@@ -1,6 +1,11 @@
 /**
- * STUB content created by A0 for bootstrap. Owner after CONTRACT_READY: A6.
- * Text copied from docs/CONTENT_AND_LEVELS.md; A6 owns final wording and validation.
+ * Six target definitions. Owner: A6.
+ *
+ * Wording rules (enforced by `validateTarget`): the free clue evokes the landmark's imagery but
+ * never names the city or the landmark; tier 1 names the city; tier 2 names the district / landmark
+ * and its compass direction from the spawn crossroads; tier 3 describes where the fine patch lies
+ * and must be true for every candidate socket. Starter wording from docs/CONTENT_AND_LEVELS.md,
+ * revised by hand here; no AI Studio output was used.
  */
 import type { TargetDefinition, TargetId } from '@/shared/contracts';
 
@@ -16,8 +21,8 @@ export const TARGETS: readonly TargetDefinition[] = [
     iconKind: 'portrait',
     hintText: [
       'Travel to Paris.',
-      'Search the Louvre courtyard.',
-      'Search outside the glass pyramid, at ground level.',
+      'Search the Louvre courtyard, north-east of the crossroads.',
+      'The portrait stands on the paving just outside the museum walls — walk the building’s edge, never inside.',
     ],
     socketIds: ['louvre-a', 'louvre-b', 'louvre-c'],
   },
@@ -32,8 +37,8 @@ export const TARGETS: readonly TargetDefinition[] = [
     iconKind: 'tower-token',
     hintText: [
       'Travel to Paris.',
-      'Search the Eiffel Tower plaza.',
-      "The tiny tower stands outside the giant tower's feet.",
+      'Search the Eiffel Tower plaza, west of the crossroads.',
+      'The tiny tower stands on open plaza ground a few strides from the giant tower’s legs — circle its base.',
     ],
     socketIds: ['tower-a', 'tower-b', 'tower-c'],
   },
@@ -43,13 +48,13 @@ export const TARGETS: readonly TargetDefinition[] = [
     landmarkId: 'cafe',
     districtId: 'cafe',
     clueTitle: 'The crescent breakfast',
-    clueText: 'Find a buttery crescent among striped cafe awnings.',
+    clueText: 'Find a buttery crescent where coffee is poured under striped awnings.',
     revealName: 'Croissant souvenir',
     iconKind: 'croissant',
     hintText: [
       'Travel to Paris.',
-      'Search the cafe quarter.',
-      'Look beside a striped awning, outside the cafe.',
+      'Search the Cafe quarter, south-east of the crossroads.',
+      'The croissant sits on the pavement outside the striped cafe, close to its walls — check every side.',
     ],
     socketIds: ['cafe-a', 'cafe-b', 'cafe-c'],
   },
@@ -64,8 +69,8 @@ export const TARGETS: readonly TargetDefinition[] = [
     iconKind: 'pyramidion',
     hintText: [
       'Travel to Giza.',
-      'Search around the Great Pyramid.',
-      "Circle the pyramid's base; the crown is on a low pedestal.",
+      'Search the Pyramid plateau, north-west of the crossroads.',
+      'The crown rests on a low pedestal on the open sand around the Great Pyramid, a short run from its base.',
     ],
     socketIds: ['pyramid-a', 'pyramid-b', 'pyramid-c'],
   },
@@ -75,13 +80,13 @@ export const TARGETS: readonly TargetDefinition[] = [
     landmarkId: 'sphinx',
     districtId: 'sphinx',
     clueTitle: 'The desert guardian',
-    clueText: "A stone guardian with a lion's body watches over the sand.",
+    clueText: 'A stone guardian with a lion’s body watches over the sand.',
     revealName: 'Sphinx sun medallion',
     iconKind: 'sun-medallion',
     hintText: [
       'Travel to Giza.',
-      'Search around the Sphinx.',
-      'Look on the open ground beside the guardian.',
+      'Search the Sphinx terrace, east of the crossroads.',
+      'The medallion lies on the open ground beside the guardian, a few strides off its stone — walk around it.',
     ],
     socketIds: ['sphinx-a', 'sphinx-b', 'sphinx-c'],
   },
@@ -91,13 +96,13 @@ export const TARGETS: readonly TargetDefinition[] = [
     landmarkId: 'market',
     districtId: 'market',
     clueTitle: 'The blue beetle',
-    clueText: "A blue beetle gleams beneath the desert market's canopies.",
+    clueText: 'A blue beetle gleams beneath bright canopies in the desert.',
     revealName: 'Scarab charm',
     iconKind: 'scarab',
     hintText: [
       'Travel to Giza.',
-      'Search the market.',
-      'Look around the outer edge of the market stalls.',
+      'Search the Desert market, south-east of the crossroads.',
+      'The scarab waits on the sand around the outer edge of the market stalls — never between them.',
     ],
     socketIds: ['market-a', 'market-b', 'market-c'],
   },
