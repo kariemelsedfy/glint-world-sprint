@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import type { UIModel, UIActions } from '@/shared/contracts';
+import type { ObjectiveCardVM, UIModel, UIActions } from '@/shared/contracts';
+import { ArcadeButton, Keycap, PhotoCard, StatChip } from './Arcade';
 import { Clock } from './Clock';
-import { MapIcon, GlobeIcon, PauseIcon } from './Icons';
-import { ObjectiveCard } from './ObjectiveCard';
-import { PassportStamp } from './PassportStamp';
+import { MapIcon, GlobeIcon, PauseIcon, CheckIcon } from './Icons';
+import { ObjectivePanel, ObjectiveTab } from './ObjectiveCard';
 
 interface CityHUDProps {
   model: UIModel;
@@ -11,98 +11,123 @@ interface CityHUDProps {
   touch?: boolean;
 }
 
+const TOAST_MS = 2600;
+
 export function CityHUD({ model, actions, touch = false }: CityHUDProps) {
   const activeId =
     model.cards.find((c) => c.selected)?.targetId ??
     model.cards.find((c) => !c.collected)?.targetId ??
     model.cards[0]?.targetId;
 
-  // Ephemeral "found" stamp: fires only when the collected count grows, not on every model tick.
-  const collectedCount = model.cards.filter((c) => c.collected).length;
-  const previousCount = useRef(collectedCount);
-  const [stamped, setStamped] = useState(false);
+  const collected = model.cards.filter((c) => c.collected);
+  const collectedCount = collected.length;
 
+  // Ephemeral "found" toast: fires only when the collected count grows, never on model ticks.
+  const previousCount = useRef(collectedCount);
+  const latestCollected = useRef<ObjectiveCardVM | null>(null);
+  latestCollected.current = collected[collected.length - 1] ?? null;
+  const [toast, setToast] = useState<ObjectiveCardVM | null>(null);
   useEffect(() => {
     if (collectedCount <= previousCount.current) {
       previousCount.current = collectedCount;
       return;
     }
     previousCount.current = collectedCount;
-    setStamped(true);
-    const timer = setTimeout(() => setStamped(false), 3000);
+    setToast(latestCollected.current);
+    const timer = setTimeout(() => setToast(null), TOAST_MS);
     return () => clearTimeout(timer);
   }, [collectedCount]);
 
-  const currentCityName = model.cities.find((c) => c.id === model.cityId)?.label ?? 'City';
+  const cityName = model.cities.find((c) => c.id === model.cityId)?.label ?? 'City';
 
   return (
-    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-3 sm:p-5 select-none">
+    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between ar-safe select-none">
       <header className="flex items-start justify-between w-full gap-2">
-        <ul
-          className="pointer-events-auto flex flex-col gap-1.5 w-[min(19rem,58vw)] max-h-[calc(100vh-9rem)] overflow-y-auto pr-0.5"
-          aria-label="Objectives"
-        >
-          {model.cards.map((card, idx) => (
-            <ObjectiveCard
-              key={card.targetId}
-              card={card}
-              index={idx}
-              expanded={card.targetId === activeId && !card.collected}
-              onSelect={actions.onSelectObjective}
-              onHint={actions.onHint}
-            />
-          ))}
-        </ul>
-
-        <div className="pointer-events-auto flex items-center gap-2">
-          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-[#FFF6E5] text-[#12253B] rounded-xl border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#12253B] text-xs font-black">
-            <span aria-hidden="true">📍</span>
-            <span>{currentCityName}</span>
-          </div>
+        {/* Top-left: timer + found count + city */}
+        <div className="pointer-events-auto flex flex-wrap items-center gap-2">
           <Clock adjustedMs={model.adjustedMs} penaltyMs={model.penaltyMs} practice={model.practice} size="lg" />
-          <button
-            type="button"
-            onClick={actions.onPause}
-            className="min-h-[44px] min-w-[44px] p-2 bg-[#FFF6E5] hover:bg-white text-[#12253B] rounded-xl border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#12253B] flex items-center justify-center focus-visible:ring-2 focus-visible:ring-[#FFC857] outline-none"
-            title="Pause"
-            aria-label="Pause"
+          <StatChip label="Found" value={`${collectedCount}/${model.cards.length}`} tone="yellow" icon={<CheckIcon size={14} />} />
+          <StatChip label="City" value={cityName} tone="cream" className="hidden sm:inline-flex" />
+        </div>
+
+        {/* Top-right: selected target panel + photo tabs + pause */}
+        <div className="pointer-events-auto flex items-start gap-2">
+          <ul
+            className="flex flex-col items-end gap-2 w-[min(21rem,60vw)] max-h-[calc(100vh-8.5rem)] overflow-y-auto pl-2 pt-2 list-none m-0 p-0"
+            aria-label="Objectives"
           >
-            <PauseIcon size={16} />
-          </button>
+            {model.cards.map((card, idx) => {
+              const active = card.targetId === activeId;
+              return (
+                <li
+                  key={card.targetId}
+                  className={`${active ? 'w-full' : 'inline-flex'} ${card.collected ? 'line-through' : ''}`}
+                  aria-current={active ? 'true' : undefined}
+                >
+                  {active ? (
+                    <ObjectivePanel card={card} index={idx} onHint={actions.onHint} compact />
+                  ) : (
+                    <>
+                      <span className="sr-only">{card.title}</span>
+                      <ObjectiveTab card={card} index={idx} active={false} onSelect={card.collected ? undefined : actions.onSelectObjective} />
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          <ArcadeButton square tone="ink" onClick={actions.onPause} title="Pause" aria-label="Pause" icon={<PauseIcon size={16} />} />
         </div>
       </header>
 
-      <div className="flex-1 flex items-center justify-center pointer-events-none">
-        {stamped && (
-          <div className="pointer-events-none animate-stamp-slam bg-[#FFF6E5]/95 backdrop-blur-md p-4 sm:p-6 rounded-2xl border-3 border-[#12253B] shadow-2xl flex flex-col items-center text-center">
-            <PassportStamp label="TARGET FOUND!" variant="gold" size="lg" animated />
-            <span className="text-xs font-black text-[#12253B] mt-2 uppercase tracking-wider">Keep moving!</span>
+      {/* Centre: non-blocking found toast (pointer-events stay off so movement continues). */}
+      <div className="flex-1 flex items-start justify-center pointer-events-none pt-2" aria-live="polite">
+        {toast && (
+          <div key={toast.targetId} className="ar-toast ar-panel ar-panel-lavender ar-pad-sm flex items-center gap-3">
+            <PhotoCard src={toast.imageUrl} alt="" size="sm" collected className="ar-thumb-in" />
+            <div>
+              <span className="ar-display text-2xl text-[var(--ar-ink)] block">Found!</span>
+              <span className="text-xs font-extrabold">{toast.title}</span>
+            </div>
           </div>
         )}
       </div>
 
       <footer className="w-full flex flex-col gap-2">
-        <p className="self-center text-[11px] font-semibold text-[#FFF6E5] bg-[#12253B]/75 px-3 py-1 rounded-full glint-compact-hide">
-          {touch ? 'Drag the stick to move.' : 'WASD or arrow keys to move.'} Walk into a glint to collect it.
+        <p className="self-center inline-flex items-center gap-1.5 text-[11px] font-extrabold text-[var(--ar-cream)] bg-[var(--ar-ink)] border-2 border-[var(--ar-ink)] px-3 py-1 rounded-[6px] glint-compact-hide">
+          {touch ? (
+            'Drag the stick to move.'
+          ) : (
+            <>
+              <Keycap>W</Keycap>
+              <Keycap>A</Keycap>
+              <Keycap>S</Keycap>
+              <Keycap>D</Keycap>
+              <span>WASD or arrow keys to move.</span>
+            </>
+          )}{' '}
+          Walk into a glint to collect it.
         </p>
         <div className="w-full flex items-end justify-between pointer-events-auto gap-2">
-          <button
-            type="button"
-            onClick={actions.onGlobe}
-            className="inline-flex items-center min-h-[44px] gap-2 px-3 sm:px-4 py-2.5 bg-[#12253B] hover:bg-[#1b3452] active:translate-y-0.5 text-[#FFF6E5] font-extrabold text-xs sm:text-sm rounded-xl border-2 border-white/20 shadow-lg focus-visible:ring-2 focus-visible:ring-[#24B8E8] outline-none"
-          >
-            <GlobeIcon size={18} className="text-[#24B8E8]" />
-            <span>Globe</span>
-          </button>
+          <div className="flex items-end gap-2">
+            <ArcadeButton tone="ink" onClick={actions.onGlobe} icon={<GlobeIcon size={18} className="text-[var(--ar-cyan)]" />}>
+              Globe
+            </ArcadeButton>
+            {/* Collected strip: found thumbnails land here. */}
+            {collected.length > 0 && (
+              <ul className="flex items-end gap-1.5 list-none m-0 p-0 glint-compact-hide" aria-label="Collected">
+                {collected.map((card) => (
+                  <li key={card.targetId} className="ar-thumb-in">
+                    <PhotoCard src={card.imageUrl} alt={`Found: ${card.title}`} size="xs" collected />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
-          <button
-            type="button"
-            onClick={() => actions.onMap(true)}
-            className="inline-flex items-center min-h-[44px] gap-2 px-3.5 sm:px-5 py-2.5 bg-[#FFF6E5] hover:bg-white active:translate-y-0.5 text-[#12253B] font-black text-xs sm:text-sm rounded-xl border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#12253B] focus-visible:ring-2 focus-visible:ring-[#FFC857] outline-none"
-          >
-            <MapIcon size={18} className="text-[#19A7A0]" />
-            <span>Map</span>
-          </button>
+          <ArcadeButton tone="cyan" onClick={() => actions.onMap(true)} icon={<MapIcon size={18} />}>
+            Map
+          </ArcadeButton>
         </div>
       </footer>
     </div>

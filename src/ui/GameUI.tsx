@@ -6,6 +6,7 @@
  */
 import type { UIActions, UIModel } from '@/shared/contracts';
 import './glint.css';
+import { BootScreen } from './components/BootScreen';
 import { BriefingScreen } from './components/BriefingScreen';
 import { CityHUD } from './components/CityHUD';
 import { ErrorOverlay } from './components/ErrorOverlay';
@@ -39,14 +40,7 @@ export function GameUI({ model, actions, showTouchControls }: GameUIProps) {
     >
       <OrientationNotice />
 
-      {model.phase === 'boot' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#12253B] text-[#FFF6E5]">
-          <div className="text-center p-6">
-            <h1 className="text-3xl font-black tracking-wider text-[#FFC857] mb-2 glint-font-display">GLINT</h1>
-            <p className="text-xs font-semibold text-white/70">{model.statusMessage ?? 'Loading…'}</p>
-          </div>
-        </div>
-      )}
+      {model.phase === 'boot' && <BootScreen statusMessage={model.statusMessage} />}
 
       {model.phase === 'menu' && <MenuScreen model={model} actions={actions} />}
       {model.phase === 'briefing' && <BriefingScreen model={model} actions={actions} />}

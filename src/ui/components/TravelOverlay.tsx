@@ -1,5 +1,5 @@
 import type { CityId } from '@/shared/contracts';
-
+import { ArcadePanel } from './Arcade';
 import { CompassIcon } from './Icons';
 
 interface TravelOverlayProps {
@@ -15,31 +15,25 @@ export function TravelOverlay({ cityId, cityLabel, statusMessage }: TravelOverla
     <div
       role="status"
       aria-live="polite"
-      className="absolute inset-0 z-40 pointer-events-auto bg-[#24B8E8]/90 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center select-none"
+      className="absolute inset-0 z-40 pointer-events-auto bg-[rgba(113,70,197,0.92)] ar-stripes flex flex-col items-center justify-center p-6 text-center select-none"
     >
-      {/* Playful Floating Toy Clouds */}
-      <div className="relative mb-6 animate-cloud-drift">
-        <div className="w-24 h-24 bg-[#FFF6E5] rounded-full border-3 border-[#12253B] shadow-[4px_4px_0px_0px_#12253B] flex items-center justify-center">
-          <CompassIcon size={44} className="animate-spin-slow" />
+      <div className="relative mb-5 animate-cloud-drift">
+        <div className="w-24 h-24 bg-[var(--ar-yellow)] rounded-[18px] border-[3px] border-[var(--ar-ink)] shadow-[0_6px_0_0_var(--ar-ink)] flex items-center justify-center">
+          <CompassIcon size={48} className="animate-spin-slow text-[var(--ar-ink)]" />
         </div>
       </div>
 
-      <div className="bg-[#FFF6E5] p-5 sm:p-6 rounded-3xl border-3 border-[#12253B] shadow-[6px_6px_0px_0px_#12253B] max-w-sm w-full">
-        <span className="text-[11px] font-black uppercase tracking-widest text-[#19A7A0] block mb-1">
-          Travelling…
+      <ArcadePanel pad="md" className="max-w-sm w-full">
+        <span className="ar-chip ar-chip-cyan mb-2">
+          <span className="ar-chip-value text-sm">Travelling…</span>
         </span>
-        <h2 className="text-xl sm:text-2xl font-black text-[#12253B]">
-          {cityId ? `Entering ${cityName}` : 'Back to the globe'}
-        </h2>
-        <p className="text-xs text-[#12253B]/70 font-semibold mt-2">
-          {statusMessage ?? 'Loading the streets and landmarks'}
-        </p>
+        <h2 className="ar-display text-3xl sm:text-4xl m-0">{cityId ? `Entering ${cityName}` : 'Back to the globe'}</h2>
+        <p className="text-xs font-semibold mt-2">{statusMessage ?? 'Loading the streets and landmarks'}</p>
 
-        {/* Playful transit loader bar */}
-        <div className="mt-4 w-full h-3 bg-[#12253B]/10 rounded-full border border-[#12253B]/30 overflow-hidden p-0.5">
-          <div className="h-full bg-[#FFC857] rounded-full animate-transit w-1/4" />
+        <div className="mt-4 w-full h-4 bg-[var(--ar-ink)] rounded-[6px] border-2 border-[var(--ar-ink)] overflow-hidden" aria-hidden="true">
+          <div className="h-full bg-[var(--ar-yellow)] animate-transit w-1/4" />
         </div>
-      </div>
+      </ArcadePanel>
     </div>
   );
 }

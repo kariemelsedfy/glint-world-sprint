@@ -119,7 +119,7 @@ export function TouchControls({ onTouchAxis }: TouchControlsProps) {
           onTouchEnd={handleTouchEnd}
           onTouchCancel={handleTouchEnd}
           onMouseDown={handleMouseDown}
-          className="relative w-28 h-28 rounded-full bg-[#12253B]/50 backdrop-blur-md border-3 border-white/40 shadow-xl flex items-center justify-center touch-none cursor-pointer"
+          className="relative w-28 h-28 rounded-full bg-[rgba(33,19,51,0.55)] border-[3px] border-[var(--ar-cream)] shadow-[0_5px_0_0_var(--ar-ink)] flex items-center justify-center touch-none cursor-pointer"
           style={{ touchAction: 'none' }}
           role="application"
           aria-label="Virtual movement thumbstick"
@@ -131,12 +131,12 @@ export function TouchControls({ onTouchAxis }: TouchControlsProps) {
           {/* Draggable Knob */}
           <div
             ref={knobRef}
-            className="w-12 h-12 rounded-full bg-[#FFC857] border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#12253B] flex items-center justify-center pointer-events-none transition-transform duration-75"
+            className="w-12 h-12 rounded-full bg-[var(--ar-yellow)] border-[3px] border-[var(--ar-ink)] shadow-[0_4px_0_0_var(--ar-ink)] flex items-center justify-center pointer-events-none transition-transform duration-75"
           >
-            <div className="w-4 h-4 rounded-full bg-[#12253B]/30" />
+            <div className="w-4 h-4 rounded-full bg-[rgba(33,19,51,0.3)]" />
           </div>
         </div>
-        <span className="text-[10px] font-black text-white/80 bg-[#12253B]/70 px-2 py-0.5 rounded-full mt-1.5 backdrop-blur-sm">
+        <span className="text-[10px] font-black text-[var(--ar-cream)] bg-[var(--ar-ink)] border-2 border-[var(--ar-ink)] px-2 py-0.5 rounded-[6px] mt-1.5">
           STEER
         </span>
       </div>

@@ -1,6 +1,6 @@
 import type { UIModel, UIActions } from '@/shared/contracts';
-import { TargetCollectibleIcon } from './Icons';
-import { PassportStamp } from './PassportStamp';
+import { trialMeta } from '../trialMeta';
+import { ArcadeButton, ArcadePanel, Keycap, PhotoCard } from './Arcade';
 
 interface BriefingScreenProps {
   model: UIModel;
@@ -9,129 +9,85 @@ interface BriefingScreenProps {
 
 export function BriefingScreen({ model, actions }: BriefingScreenProps) {
   const currentLevel = model.levels.find((l) => l.id === model.levelId) || model.levels[0];
+  const meta = currentLevel ? trialMeta(currentLevel.id) : null;
 
   return (
-    <div className="absolute inset-0 pointer-events-auto flex flex-col justify-between gap-3 p-3 sm:p-6 lg:p-8 select-none overflow-y-auto">
-      {/* Header */}
-      <header className="flex items-center justify-between max-w-4xl mx-auto w-full shrink-0">
-        <button
-          type="button"
-          onClick={actions.onMenu}
-          className="inline-flex items-center gap-1.5 min-h-[44px] px-3 py-1.5 bg-[#FFF6E5] hover:bg-white text-[#12253B] font-bold text-xs rounded-xl border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#12253B] focus-visible:ring-2 focus-visible:ring-[#FFC857] outline-none"
-        >
-          <span>←</span>
-          <span>Back to Menu</span>
-        </button>
+    <div className="absolute inset-0 pointer-events-auto flex flex-col justify-between gap-3 ar-safe select-none overflow-y-auto bg-[rgba(33,19,51,0.55)]">
+      <header className="flex items-center justify-between max-w-5xl mx-auto w-full shrink-0 gap-2">
+        <ArcadeButton size="sm" onClick={actions.onMenu} icon={<span>←</span>}>
+          Menu
+        </ArcadeButton>
 
-        <div className="text-center">
-          <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#24B8E8] bg-[#12253B] px-3 py-1 rounded-full border border-white/20">
-            Trial: {currentLevel?.title || 'Active Trial'}
+        <div className="text-center min-w-0">
+          <span className="ar-chip ar-chip-purple min-h-[36px]">
+            <span className="ar-chip-label">Expedition</span>
+            <span className="ar-chip-value text-base truncate">{currentLevel?.title ?? 'Trial'}</span>
           </span>
         </div>
 
-        <div className="text-right glint-compact-hide">
-          <PassportStamp label="BRIEFING" variant="gold" size="sm" />
-        </div>
-        <button
-          type="button"
-          onClick={actions.onGo}
-          aria-label="Go"
-          className="glint-compact-only items-center gap-1.5 min-h-[44px] px-4 rounded-xl bg-[#78D896] hover:bg-[#6ed08c] text-[#12253B] font-black text-sm border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#12253B] focus-visible:ring-2 focus-visible:ring-[#FFC857] outline-none"
-        >
-          Go ⚡
-        </button>
+        <ArcadeButton tone="yellow" size="sm" onClick={actions.onGo} aria-label="Go" className="glint-compact-only">
+          Start hunt
+        </ArcadeButton>
+        <span className="glint-compact-hide w-[92px]" aria-hidden="true" />
       </header>
 
-      {/* Main Content: Mission Objective & 2 Clue Cards */}
-      <main className="my-auto max-w-3xl mx-auto w-full py-2 sm:py-4">
-        {/* Fantasy kicker banner */}
-        <div className="text-center mb-3 sm:mb-5">
-          <h1 className="text-xl sm:text-2xl font-black text-[#12253B] bg-[#FFF6E5]/95 backdrop-blur-md px-4 py-2 rounded-2xl border-2 border-[#12253B] shadow-[3px_3px_0px_0px_#12253B] inline-block glint-font-display">
-            Briefing
-          </h1>
-          <p className="mt-1.5 text-sm font-bold text-[#12253B] bg-[#FFF6E5]/90 px-3 py-0.5 rounded-full inline-block">
-            Find both treasures. Fastest adjusted time wins.
-          </p>
-          <p className="mt-1 text-xs font-semibold text-[#12253B]/70 bg-white/70 px-3 py-0.5 rounded-full inline-block glint-compact-hide">
-            Clock has not started · Inspect your clues before launching
+      <main className="my-auto max-w-5xl mx-auto w-full py-1 sm:py-3">
+        <div className="text-center mb-3 sm:mb-4">
+          <h1 className="ar-display text-4xl sm:text-5xl text-[var(--ar-yellow)] [text-shadow:4px_4px_0_var(--ar-ink)] m-0">Briefing</h1>
+          <p className="mt-2 inline-block ar-panel ar-pad-sm text-xs sm:text-sm font-extrabold">
+            Find {model.cards.length} objects across the globe. Fastest adjusted time wins.
+            {meta && <span className="text-[var(--ar-purple)]"> · {meta.difficulty}, {meta.duration}</span>}
           </p>
         </div>
 
-        {/* The Two Illustrated Clue Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+        <ul className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 list-none m-0 p-0" aria-label="Clue cards">
           {model.cards.map((card, idx) => (
-            <div
-              key={card.targetId}
-              className="passport-card p-3 sm:p-5 flex flex-col justify-between border-2 border-[#12253B] relative overflow-hidden"
-            >
-              {/* Card top badge */}
-              <div className="flex items-center justify-between pb-3 border-b-2 border-dashed border-[#12253B]/20">
-                <span className="text-[11px] font-black tracking-wider uppercase text-[#19A7A0] bg-[#19A7A0]/10 px-2 py-0.5 rounded">
-                  Target #{idx + 1}
-                </span>
-                <span className="text-[11px] font-bold text-[#12253B]/60">
-                  Clue
-                </span>
-              </div>
-
-              {/* Clue illustration + text */}
-              <div className="my-3 sm:my-4 flex items-start gap-3.5">
-                <div className="p-2.5 bg-white rounded-xl border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#24B8E8] shrink-0">
-                  <TargetCollectibleIcon kind={card.targetId} size={36} />
-                </div>
-                <div className="flex-1">
-                  <h2 className="text-base font-extrabold text-[#12253B] leading-tight">
-                    {card.title}
-                  </h2>
-                  <p className="mt-1.5 text-xs text-[#12253B]/80 font-medium leading-relaxed bg-white/60 p-2 rounded-lg border border-[#12253B]/10">
-                    "{card.clue}"
+            <li key={card.targetId}>
+              <ArcadePanel pad="sm" className="h-full flex gap-3 items-start">
+                <PhotoCard src={card.imageUrl} alt={card.imageAlt} size="md" className="shrink-0 hidden sm:inline-flex" />
+                <PhotoCard src={card.imageUrl} alt={card.imageAlt} size="sm" className="shrink-0 sm:hidden" />
+                <div className="min-w-0 flex-1">
+                  <span className="ar-chip ar-chip-yellow min-h-[26px] px-2 py-0 mb-1">
+                    <span className="ar-chip-label">Target</span>
+                    <span className="ar-chip-value text-sm">{idx + 1}</span>
+                  </span>
+                  <h2 className="ar-display text-xl sm:text-2xl m-0 leading-none">{card.title}</h2>
+                  <p className="mt-1.5 text-xs sm:text-sm font-semibold leading-snug">“{card.clue}”</p>
+                  <p className="mt-1.5 text-[10px] font-extrabold uppercase tracking-wider text-[var(--ar-purple)] glint-compact-hide">
+                    City unknown · paid hints in-city
                   </p>
                 </div>
-              </div>
-
-              {/* Card bottom hint preview indicator */}
-              <div className="pt-2 text-[11px] font-semibold text-[#12253B]/70 flex items-center justify-between">
-                <span>City: pick it on the globe</span>
-                <span className="text-[#B45309] font-bold">Paid hints in-city</span>
-              </div>
-            </div>
+              </ArcadePanel>
+            </li>
           ))}
-        </div>
+        </ul>
 
-        {/* Controls Summary Bar */}
-        <div className="mt-4 glint-compact-hide bg-[#12253B]/90 backdrop-blur-md text-[#FFF6E5] rounded-xl p-3 border-2 border-white/20 shadow-lg flex flex-wrap items-center justify-around gap-2 text-xs">
-          <div className="flex items-center gap-1.5">
-            <span className="bg-[#24B8E8] text-[#12253B] px-1.5 py-0.5 rounded font-black text-[10px]">
-              WASD / ARROWS / STICK
-            </span>
-            <span className="opacity-90">Move the explorer</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="bg-[#FFC857] text-[#12253B] px-1.5 py-0.5 rounded font-black text-[10px]">
-              WALK INTO A GLINT
-            </span>
-            <span className="opacity-90">Collect it</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="bg-[#78D896] text-[#12253B] px-1.5 py-0.5 rounded font-black text-[10px]">
-              MAP · HINTS
-            </span>
-            <span className="opacity-90">Buttons in the city HUD (hints add time)</span>
-          </div>
-        </div>
+        <ArcadePanel tone="ink" pad="sm" className="mt-3 sm:mt-4 glint-compact-hide flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-bold">
+          <span className="inline-flex items-center gap-1.5">
+            <Keycap>W</Keycap>
+            <Keycap>A</Keycap>
+            <Keycap>S</Keycap>
+            <Keycap>D</Keycap>
+            <span className="opacity-80">or arrows to move</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="ar-chip ar-chip-pink min-h-[26px] px-2 py-0 ar-chip-value text-[11px]">WALK INTO A GLINT</span>
+            <span className="opacity-80">to collect it</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="ar-chip ar-chip-cyan min-h-[26px] px-2 py-0 ar-chip-value text-[11px]">MAP · HINT · GLOBE</span>
+            <span className="opacity-80">buttons in the HUD</span>
+          </span>
+        </ArcadePanel>
       </main>
 
-      {/* Go Button Footer */}
-      <footer className="w-full max-w-sm mx-auto shrink-0 glint-compact-hide">
-        <button
-          type="button"
-          onClick={actions.onGo}
-          aria-label="Go"
-          className="w-full min-h-[44px] py-3 sm:py-4 px-8 rounded-2xl bg-[#78D896] hover:bg-[#6ed08c] active:translate-y-0.5 text-[#12253B] font-black text-xl border-3 border-[#12253B] shadow-[4px_4px_0px_0px_#12253B] flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-[#FFC857] outline-none transition-all cursor-pointer"
-        >
-          <span>Go — start the clock</span>
-          <span className="text-2xl leading-none">⚡</span>
-        </button>
+      <footer className="w-full max-w-md mx-auto shrink-0 glint-compact-hide">
+        <ArcadeButton tone="yellow" size="lg" block onClick={actions.onGo} aria-label="Go">
+          Start hunt
+        </ArcadeButton>
+        <p className="mt-3 text-center text-[11px] font-extrabold text-[var(--ar-cream)] [text-shadow:1px_1px_0_var(--ar-ink)]">
+          The clock starts when you press START HUNT.
+        </p>
       </footer>
     </div>
   );
