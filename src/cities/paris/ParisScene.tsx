@@ -4,20 +4,22 @@
  * Everything is derived from `definition`: blockers become buildings / water / landmarks,
  * roads become boulevards, sockets get a legible pavement pad. Cosmetic variation (facade
  * tones, roof colors, tree and lamp placement) uses an independent seeded RNG and never
- * moves a blocker or props into a socket's clear zone. Repeated props are instanced.
+ * moves a blocker or props into a socket's clear zone.
+ *
+ * Render budget: the whole city is a handful of InstancedMesh draws (one per shared
+ * geometry), all with vertex-lit Lambert materials, no transparency and no per-frame work.
  */
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import {
   BoxGeometry,
+  BufferGeometry,
   Color,
   ConeGeometry,
   CylinderGeometry,
-  DoubleSide,
   EdgesGeometry,
   InstancedMesh,
   LineBasicMaterial,
   MeshLambertMaterial,
-  MeshStandardMaterial,
   Object3D,
   PlaneGeometry,
   Quaternion,
@@ -35,35 +37,30 @@ import type { Rng } from '@/shared/seed';
 // ---------------------------------------------------------------------------
 
 const UNIT_BOX = new BoxGeometry(1, 1, 1);
-const UNIT_CYLINDER = new CylinderGeometry(0.5, 0.5, 1, 8);
-const UNIT_SPHERE = new SphereGeometry(1, 10, 8);
+const UNIT_CYLINDER = new CylinderGeometry(0.5, 0.5, 1, 6);
+const UNIT_SPHERE = new SphereGeometry(1, 7, 5);
 const SQUARE_CONE = new ConeGeometry(Math.SQRT1_2, 1, 4);
 const SQUARE_CONE_EDGES = new EdgesGeometry(SQUARE_CONE);
 const TAPERED_SHAFT = new CylinderGeometry(0.45, 1.1, 1, 4);
 const UNIT_PLANE = new PlaneGeometry(1, 1);
-const SOCKET_RING = new RingGeometry(1.7, 2.3, 32);
+const SOCKET_RING = new RingGeometry(1.7, 2.3, 20);
 
+/** Single vertex-colored material shared by every instanced batch. */
 const WHITE = new MeshLambertMaterial({ color: '#ffffff' });
-const GROUND_MATERIAL = new MeshLambertMaterial({ color: '#cfe3c8' });
-const PLAZA_MATERIAL = new MeshLambertMaterial({ color: '#eadfc9' });
-const SIDEWALK_MATERIAL = new MeshLambertMaterial({ color: '#f3ede0' });
-const ROAD_MATERIAL = new MeshLambertMaterial({ color: '#d8d2c3' });
-const WATER_MATERIAL = new MeshLambertMaterial({ color: '#4fb9e4' });
-const QUAY_MATERIAL = new MeshLambertMaterial({ color: '#d6c7a8' });
-const BRIDGE_MATERIAL = new MeshLambertMaterial({ color: '#e6dcc6' });
 const IRON_MATERIAL = new MeshLambertMaterial({ color: '#5a4536' });
-const GLASS_MATERIAL = new MeshStandardMaterial({
-  color: '#8fdcf0',
-  transparent: true,
-  opacity: 0.6,
-  roughness: 0.15,
-  metalness: 0.1,
-  side: DoubleSide,
-});
+const GLASS_MATERIAL = new MeshLambertMaterial({ color: '#a6e0f2' });
 const GLASS_EDGE_MATERIAL = new LineBasicMaterial({ color: '#2f6f86' });
-const SOCKET_PAD_MATERIAL = new MeshLambertMaterial({ color: '#fff6e5' });
-const SOCKET_DISC_MATERIAL = new MeshLambertMaterial({ color: '#d9cdb4' });
 
+const GROUND_TONE = '#cfe3c8';
+const PLAZA_TONE = '#eadfc9';
+const SIDEWALK_TONE = '#f3ede0';
+const ROAD_TONE = '#d8d2c3';
+const WATER_TONE = '#4fb9e4';
+const QUAY_TONE = '#d6c7a8';
+const BRIDGE_TONE = '#e6dcc6';
+const IRON_TONE = '#5a4536';
+const SOCKET_PAD_TONE = '#fff6e5';
+const SOCKET_DISC_TONE = '#d9cdb4';
 const STONE_TONES = ['#f6dfc1', '#efd3ae', '#f3e3cc', '#e9cfa9', '#f8e8d2'] as const;
 const ROOF_TONES = ['#48667d', '#3f5b70', '#52708a', '#455f74'] as const;
 const LEAF_TONES = ['#6fbf73', '#5faf68', '#86c97a', '#4fa35e'] as const;
@@ -81,6 +78,7 @@ const TABLE_TONE = '#fff6e5';
 const ROOF_HEIGHT = 2.2;
 const PLINTH_HEIGHT = 0.8;
 const SOCKET_CLEAR_RADIUS = 5;
+const FLAT = -Math.PI / 2;
 
 // ---------------------------------------------------------------------------
 // Instancing helper
@@ -95,11 +93,12 @@ interface InstanceItem {
   readonly sz: number;
   readonly ry?: number;
   readonly rx?: number;
+  readonly quaternion?: Quaternion;
   readonly color: string;
 }
 
 interface InstancesProps {
-  readonly geometry: BoxGeometry | CylinderGeometry | SphereGeometry;
+  readonly geometry: BufferGeometry;
   readonly items: readonly InstanceItem[];
 }
 
@@ -114,7 +113,8 @@ function Instances({ geometry, items }: InstancesProps) {
     if (!mesh) return;
     items.forEach((item, index) => {
       scratchObject.position.set(item.x, item.y, item.z);
-      scratchObject.rotation.set(item.rx ?? 0, item.ry ?? 0, 0);
+      if (item.quaternion) scratchObject.quaternion.copy(item.quaternion);
+      else scratchObject.rotation.set(item.rx ?? 0, item.ry ?? 0, 0);
       scratchObject.scale.set(item.sx, item.sy, item.sz);
       scratchObject.updateMatrix();
       mesh.setMatrixAt(index, scratchObject.matrix);
@@ -171,6 +171,57 @@ function boxItem(rect: RectXZ, y0: number, height: number, color: string): Insta
   };
 }
 
+/** A flat XZ rectangle drawn with the shared unit plane. */
+function flatItem(rect: RectXZ, y: number, color: string): InstanceItem {
+  return { x: centerX(rect), y, z: centerZ(rect), sx: width(rect), sy: depth(rect), sz: 1, rx: FLAT, color };
+}
+
+const UP = new Vector3(0, 1, 0);
+/** Two kerb strips beside a road, so pavement never sits underneath the road surface itself. */
+function sidewalkStrips(road: RectXZ, by: number): readonly RectXZ[] {
+  return width(road) >= depth(road)
+    ? [
+        { minX: road.minX - by, maxX: road.maxX + by, minZ: road.minZ - by, maxZ: road.minZ },
+        { minX: road.minX - by, maxX: road.maxX + by, minZ: road.maxZ, maxZ: road.maxZ + by },
+      ]
+    : [
+        { minX: road.minX - by, maxX: road.minX, minZ: road.minZ - by, maxZ: road.maxZ + by },
+        { minX: road.maxX, maxX: road.maxX + by, minZ: road.minZ - by, maxZ: road.maxZ + by },
+      ];
+}
+
+/**
+ * Instance order is draw order. The camera looks down, so drawing the highest items first lets the
+ * depth test reject the ground and building bodies underneath before they are shaded.
+ */
+function top(item: InstanceItem): number {
+  return item.rx === undefined && item.quaternion === undefined ? item.y + item.sy / 2 : item.y;
+}
+function byTopDescending(a: InstanceItem, b: InstanceItem): number {
+  return top(b) - top(a);
+}
+
+const scratchA = new Vector3();
+const scratchB = new Vector3();
+
+function strutItem(from: Vec3, to: Vec3, thickness: number, color: string): InstanceItem {
+  const a = scratchA.set(...from);
+  const b = scratchB.set(...to);
+  const direction = b.clone().sub(a);
+  const length = direction.length();
+  const mid = a.clone().add(b).multiplyScalar(0.5);
+  return {
+    x: mid.x,
+    y: mid.y,
+    z: mid.z,
+    sx: thickness,
+    sy: length,
+    sz: thickness,
+    quaternion: new Quaternion().setFromUnitVectors(UP, direction.normalize()),
+    color,
+  };
+}
+
 interface FacadeSegment {
   readonly rect: RectXZ;
   readonly height: number;
@@ -207,27 +258,19 @@ function splitBlock(blocker: RectXZ, rng: Rng, fixedHeight?: number): FacadeSegm
   return segments;
 }
 
-interface BuildingBatches {
-  readonly bodies: InstanceItem[];
-  readonly plinths: InstanceItem[];
-  readonly roofs: InstanceItem[];
-  readonly chimneys: InstanceItem[];
-  readonly windows: InstanceItem[];
-}
-
-function buildFacades(segments: readonly FacadeSegment[], rng: Rng, quality: Quality): BuildingBatches {
-  const batches: BuildingBatches = { bodies: [], plinths: [], roofs: [], chimneys: [], windows: [] };
+/** All box-shaped scenery in one batch; boxes are by far the most common shape. */
+function buildFacades(segments: readonly FacadeSegment[], rng: Rng, quality: Quality, boxes: InstanceItem[]): void {
   for (const segment of segments) {
     const { rect, height, stone, roof, outer } = segment;
-    batches.bodies.push(boxItem(rect, 0, height, stone));
-    batches.plinths.push(boxItem(grow(rect, 0.08), 0, PLINTH_HEIGHT, PLINTH_TONE));
-    batches.roofs.push(boxItem(grow(rect, -0.5), height, ROOF_HEIGHT, roof));
-    batches.roofs.push(boxItem(grow(rect, -1.4), height + ROOF_HEIGHT, 0.5, roof));
+    boxes.push(boxItem(rect, 0, height, stone));
+    boxes.push(boxItem(grow(rect, -0.5), height, ROOF_HEIGHT, roof));
     if (quality === 'low') continue;
+    boxes.push(boxItem(grow(rect, 0.08), 0, PLINTH_HEIGHT, PLINTH_TONE));
+    boxes.push(boxItem(grow(rect, -1.4), height + ROOF_HEIGHT, 0.5, roof));
 
     const chimneyCount = 1 + rng.int(2);
     for (let index = 0; index < chimneyCount; index += 1) {
-      batches.chimneys.push({
+      boxes.push({
         x: rect.minX + 1.5 + rng.next() * Math.max(0.1, width(rect) - 3),
         y: height + ROOF_HEIGHT + 0.6,
         z: rect.minZ + 1.5 + rng.next() * Math.max(0.1, depth(rect) - 3),
@@ -238,46 +281,29 @@ function buildFacades(segments: readonly FacadeSegment[], rng: Rng, quality: Qua
       });
     }
 
+    // The chase camera always looks toward -Z, so the -Z facade is never on screen: skip its windows.
     for (let y = 2.6; y <= height - 1.6; y += 3) {
       const rowY = y + 0.8;
-      if (rect.minZ <= outer.minZ + 0.01 || rect.maxZ >= outer.maxZ - 0.01) {
+      if (rect.maxZ >= outer.maxZ - 0.01) {
         for (let x = rect.minX + 1.4; x <= rect.maxX - 1.4; x += 2.6) {
-          if (rect.minZ <= outer.minZ + 0.01) {
-            batches.windows.push({ x, y: rowY, z: rect.minZ - 0.04, sx: 1.1, sy: 1.6, sz: 0.1, color: WINDOW_TONE });
-          }
-          if (rect.maxZ >= outer.maxZ - 0.01) {
-            batches.windows.push({ x, y: rowY, z: rect.maxZ + 0.04, sx: 1.1, sy: 1.6, sz: 0.1, color: WINDOW_TONE });
-          }
+          boxes.push({ x, y: rowY, z: rect.maxZ + 0.04, sx: 1.1, sy: 1.6, sz: 0.1, color: WINDOW_TONE });
         }
       }
       if (rect.minX <= outer.minX + 0.01 || rect.maxX >= outer.maxX - 0.01) {
         for (let z = rect.minZ + 1.4; z <= rect.maxZ - 1.4; z += 2.6) {
           if (rect.minX <= outer.minX + 0.01) {
-            batches.windows.push({ x: rect.minX - 0.04, y: rowY, z, sx: 0.1, sy: 1.6, sz: 1.1, color: WINDOW_TONE });
+            boxes.push({ x: rect.minX - 0.04, y: rowY, z, sx: 0.1, sy: 1.6, sz: 1.1, color: WINDOW_TONE });
           }
           if (rect.maxX >= outer.maxX - 0.01) {
-            batches.windows.push({ x: rect.maxX + 0.04, y: rowY, z, sx: 0.1, sy: 1.6, sz: 1.1, color: WINDOW_TONE });
+            boxes.push({ x: rect.maxX + 0.04, y: rowY, z, sx: 0.1, sy: 1.6, sz: 1.1, color: WINDOW_TONE });
           }
         }
       }
     }
   }
-  return batches;
 }
 
-interface PropBatches {
-  readonly trunks: InstanceItem[];
-  readonly crowns: InstanceItem[];
-  readonly lampPosts: InstanceItem[];
-  readonly lampGlows: InstanceItem[];
-}
-
-function isClearForProps(
-  definition: CityDefinition,
-  x: number,
-  z: number,
-  keepOffRoads: boolean,
-): boolean {
+function isClearForProps(definition: CityDefinition, x: number, z: number, keepOffRoads: boolean): boolean {
   const limits = grow(definition.bounds, -2);
   if (!contains(limits, x, z)) return false;
   for (const blocker of definition.blockers) {
@@ -298,10 +324,17 @@ function isClearForProps(
   return true;
 }
 
-function buildProps(definition: CityDefinition, rng: Rng, quality: Quality): PropBatches {
-  const batches: PropBatches = { trunks: [], crowns: [], lampPosts: [], lampGlows: [] };
+interface Batches {
+  readonly boxes: InstanceItem[];
+  readonly cylinders: InstanceItem[];
+  readonly spheres: InstanceItem[];
+  readonly flats: InstanceItem[];
+  readonly rings: InstanceItem[];
+}
+
+function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batches: Batches): void {
   const placed: [number, number][] = [];
-  const target = quality === 'low' ? 28 : 80;
+  const target = quality === 'low' ? 24 : 64;
   const attempts = target * 8;
   const { bounds } = definition;
 
@@ -313,8 +346,8 @@ function buildProps(definition: CityDefinition, rng: Rng, quality: Quality): Pro
     placed.push([x, z]);
     const crown = 1.5 + rng.next() * 0.9;
     const trunkHeight = 1.4 + rng.next() * 0.6;
-    batches.trunks.push({ x, y: trunkHeight / 2, z, sx: 0.55, sy: trunkHeight, sz: 0.55, color: TRUNK_TONE });
-    batches.crowns.push({
+    batches.cylinders.push({ x, y: trunkHeight / 2, z, sx: 0.55, sy: trunkHeight, sz: 0.55, color: TRUNK_TONE });
+    batches.spheres.push({
       x,
       y: trunkHeight + crown * 0.85,
       z,
@@ -325,7 +358,7 @@ function buildProps(definition: CityDefinition, rng: Rng, quality: Quality): Pro
     });
   }
 
-  if (quality === 'low') return batches;
+  if (quality === 'low') return;
 
   for (const road of definition.roads) {
     const horizontal = width(road) >= depth(road);
@@ -335,250 +368,135 @@ function buildProps(definition: CityDefinition, rng: Rng, quality: Quality): Pro
         const x = horizontal ? road.minX + along : centerX(road) + side * (width(road) / 2 + 0.8);
         const z = horizontal ? centerZ(road) + side * (depth(road) / 2 + 0.8) : road.minZ + along;
         if (!isClearForProps(definition, x, z, false)) continue;
-        batches.lampPosts.push({ x, y: 1.4, z, sx: 0.3, sy: 2.8, sz: 0.3, color: LAMP_POST_TONE });
-        batches.lampGlows.push({ x, y: 3.1, z, sx: 0.7, sy: 0.7, sz: 0.7, color: LAMP_GLOW_TONE });
+        batches.cylinders.push({ x, y: 1.4, z, sx: 0.3, sy: 2.8, sz: 0.3, color: LAMP_POST_TONE });
+        batches.boxes.push({ x, y: 3.1, z, sx: 0.7, sy: 0.7, sz: 0.7, color: LAMP_GLOW_TONE });
       }
     }
   }
-  return batches;
 }
 
-// ---------------------------------------------------------------------------
-// Flat surfaces
-// ---------------------------------------------------------------------------
-
-function FlatRect({
-  rect,
-  y,
-  material,
-}: {
-  readonly rect: RectXZ;
-  readonly y: number;
-  readonly material: MeshLambertMaterial;
-}) {
-  return (
-    <mesh
-      geometry={UNIT_PLANE}
-      material={material}
-      rotation={[-Math.PI / 2, 0, 0]}
-      position={[centerX(rect), y, centerZ(rect)]}
-      scale={[width(rect), depth(rect), 1]}
-    />
-  );
-}
-
-function River({ segments, bridges }: { readonly segments: readonly Blocker[]; readonly bridges: readonly RectXZ[] }) {
-  const quays = useMemo<InstanceItem[]>(
-    () =>
-      segments.flatMap((segment) => [
-        boxItem({ minX: segment.minX, maxX: segment.minX + 0.6, minZ: segment.minZ, maxZ: segment.maxZ }, 0, 0.5, '#d6c7a8'),
-        boxItem({ minX: segment.maxX - 0.6, maxX: segment.maxX, minZ: segment.minZ, maxZ: segment.maxZ }, 0, 0.5, '#d6c7a8'),
-      ]),
-    [segments],
-  );
-  return (
-    <group>
-      {segments.map((segment) => (
-        <FlatRect key={segment.id} rect={segment} y={0.03} material={WATER_MATERIAL} />
-      ))}
-      <Instances geometry={UNIT_BOX} items={quays} />
-      {bridges.map((bridge, index) => (
-        <group key={`bridge-${index}`}>
-          <mesh
-            geometry={UNIT_BOX}
-            material={BRIDGE_MATERIAL}
-            position={[centerX(bridge), 0.12, centerZ(bridge)]}
-            scale={[width(bridge) + 2, 0.24, depth(bridge)]}
-          />
-          <mesh
-            geometry={UNIT_BOX}
-            material={QUAY_MATERIAL}
-            position={[centerX(bridge), 0.55, bridge.minZ + 0.3]}
-            scale={[width(bridge) + 2, 0.9, 0.5]}
-          />
-          <mesh
-            geometry={UNIT_BOX}
-            material={QUAY_MATERIAL}
-            position={[centerX(bridge), 0.55, bridge.maxZ - 0.3]}
-            scale={[width(bridge) + 2, 0.9, 0.5]}
-          />
-        </group>
-      ))}
-    </group>
-  );
+function buildRiver(segments: readonly Blocker[], bridges: readonly RectXZ[], batches: Batches): void {
+  for (const segment of segments) {
+    batches.flats.push(flatItem(segment, 0.03, WATER_TONE));
+    batches.boxes.push(boxItem({ ...segment, maxX: segment.minX + 0.6 }, 0, 0.5, QUAY_TONE));
+    batches.boxes.push(boxItem({ ...segment, minX: segment.maxX - 0.6 }, 0, 0.5, QUAY_TONE));
+  }
+  for (const bridge of bridges) {
+    const w = width(bridge) + 2;
+    batches.boxes.push({ x: centerX(bridge), y: 0.12, z: centerZ(bridge), sx: w, sy: 0.24, sz: depth(bridge), color: BRIDGE_TONE });
+    batches.boxes.push({ x: centerX(bridge), y: 0.55, z: bridge.minZ + 0.3, sx: w, sy: 0.9, sz: 0.5, color: QUAY_TONE });
+    batches.boxes.push({ x: centerX(bridge), y: 0.55, z: bridge.maxZ - 0.3, sx: w, sy: 0.9, sz: 0.5, color: QUAY_TONE });
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Landmarks
 // ---------------------------------------------------------------------------
 
-const UP = new Vector3(0, 1, 0);
+const EIFFEL_PLATFORM_1 = 12;
+const EIFFEL_PLATFORM_2 = 22;
+const EIFFEL_SHAFT_TOP = 32;
+const CORNERS: readonly (readonly [number, number])[] = [
+  [-1, -1],
+  [1, -1],
+  [1, 1],
+  [-1, 1],
+];
 
-function Strut({ from, to, thickness }: { readonly from: Vec3; readonly to: Vec3; readonly thickness: number }) {
-  const { position, quaternion, length } = useMemo(() => {
-    const a = new Vector3(...from);
-    const b = new Vector3(...to);
-    const direction = b.clone().sub(a);
-    const size = direction.length();
-    return {
-      position: a.clone().add(b).multiplyScalar(0.5),
-      quaternion: new Quaternion().setFromUnitVectors(UP, direction.normalize()),
-      length: size,
-    };
-  }, [from, to]);
+function buildEiffel(landmark: Landmark, quality: Quality, boxes: InstanceItem[]): void {
+  const [cx, cz] = landmark.center;
+  const half = Math.min(width(landmark.footprint), depth(landmark.footprint)) / 2;
+  const legSpread = half - 1.2;
+  const at = (x: number, y: number, z: number): Vec3 => [cx + x, y, cz + z];
+  const box = (x: number, y: number, z: number, sx: number, sy: number, sz: number) =>
+    boxes.push({ x: cx + x, y, z: cz + z, sx, sy, sz, color: IRON_TONE });
+
+  for (const [sx, sz] of CORNERS) {
+    boxes.push(strutItem(at(sx * legSpread, 0, sz * legSpread), at(sx * 2.4, EIFFEL_PLATFORM_1, sz * 2.4), 1.7, IRON_TONE));
+    boxes.push(strutItem(at(sx * 2.4, EIFFEL_PLATFORM_1, sz * 2.4), at(sx * 1.1, EIFFEL_PLATFORM_2, sz * 1.1), 1.0, IRON_TONE));
+    box(sx * legSpread, 0.5, sz * legSpread, 2.6, 1, 2.6);
+  }
+  if (quality !== 'low') {
+    CORNERS.forEach(([sx, sz], index) => {
+      const next = CORNERS[(index + 1) % CORNERS.length]!;
+      const t = 0.42;
+      const ax = sx * legSpread * (1 - t) + sx * 2.4 * t;
+      const az = sz * legSpread * (1 - t) + sz * 2.4 * t;
+      const bx = next[0] * legSpread * (1 - t) + next[0] * 2.4 * t;
+      const bz = next[1] * legSpread * (1 - t) + next[1] * 2.4 * t;
+      const y = EIFFEL_PLATFORM_1 * t;
+      const apexY = EIFFEL_PLATFORM_1 * (t + 0.275);
+      boxes.push(strutItem(at(ax, y, az), at(bx, y, bz), 0.45, IRON_TONE));
+      boxes.push(strutItem(at(ax, y, az), at((ax + bx) / 2, apexY, (az + bz) / 2), 0.3, IRON_TONE));
+      boxes.push(strutItem(at(bx, y, bz), at((ax + bx) / 2, apexY, (az + bz) / 2), 0.3, IRON_TONE));
+    });
+    box(0, EIFFEL_PLATFORM_1 + 1.1, 0, 5.8, 1.0, 5.8);
+  }
+  box(0, EIFFEL_PLATFORM_1, 0, 7.2, 1.1, 7.2);
+  box(0, EIFFEL_PLATFORM_2, 0, 3.6, 0.9, 3.6);
+  box(0, EIFFEL_SHAFT_TOP + 0.4, 0, 2.2, 0.8, 2.2);
+  box(0, EIFFEL_SHAFT_TOP + 2.6, 0, 0.4, 3.6, 0.4);
+}
+
+function EiffelShaft({ landmark }: { readonly landmark: Landmark }) {
+  const [cx, cz] = landmark.center;
   return (
     <mesh
-      geometry={UNIT_BOX}
+      geometry={TAPERED_SHAFT}
       material={IRON_MATERIAL}
-      position={position}
-      quaternion={quaternion}
-      scale={[thickness, length, thickness]}
+      position={[cx, (EIFFEL_PLATFORM_2 + EIFFEL_SHAFT_TOP) / 2, cz]}
+      rotation={[0, Math.PI / 4, 0]}
+      scale={[1, EIFFEL_SHAFT_TOP - EIFFEL_PLATFORM_2, 1]}
     />
   );
 }
 
-function EiffelTower({ landmark, quality }: { readonly landmark: Landmark; readonly quality: Quality }) {
-  const [cx, cz] = landmark.center;
-  const half = Math.min(width(landmark.footprint), depth(landmark.footprint)) / 2;
-  const legSpread = half - 1.2;
-  const platform1Y = 12;
-  const platform2Y = 22;
-  const shaftTop = 32;
-  const corners: readonly (readonly [number, number])[] = [
-    [-1, -1],
-    [1, -1],
-    [1, 1],
-    [-1, 1],
-  ];
-  const detailed = quality !== 'low';
+const PYRAMID_BASE = 7;
+const PYRAMID_HEIGHT = 5.6;
 
-  return (
-    <group position={[cx, 0, cz]}>
-      {corners.map(([sx, sz], index) => (
-        <group key={`leg-${index}`}>
-          <Strut from={[sx * legSpread, 0, sz * legSpread]} to={[sx * 2.4, platform1Y, sz * 2.4]} thickness={1.7} />
-          <Strut from={[sx * 2.4, platform1Y, sz * 2.4]} to={[sx * 1.1, platform2Y, sz * 1.1]} thickness={1.0} />
-          <mesh
-            geometry={UNIT_BOX}
-            material={IRON_MATERIAL}
-            position={[sx * legSpread, 0.5, sz * legSpread]}
-            scale={[2.6, 1, 2.6]}
-          />
-        </group>
-      ))}
-      {detailed &&
-        corners.map(([sx, sz], index) => {
-          const next = corners[(index + 1) % corners.length]!;
-          const mid = 0.55;
-          const t = 0.42;
-          const ax = (sx * legSpread) * (1 - t) + sx * 2.4 * t;
-          const az = (sz * legSpread) * (1 - t) + sz * 2.4 * t;
-          const bx = (next[0] * legSpread) * (1 - t) + next[0] * 2.4 * t;
-          const bz = (next[1] * legSpread) * (1 - t) + next[1] * 2.4 * t;
-          return (
-            <group key={`brace-${index}`}>
-              <Strut from={[ax, platform1Y * t, az]} to={[bx, platform1Y * t, bz]} thickness={0.45} />
-              <Strut from={[ax, platform1Y * t, az]} to={[(ax + bx) / 2, platform1Y * (t + mid * 0.5), (az + bz) / 2]} thickness={0.3} />
-              <Strut from={[bx, platform1Y * t, bz]} to={[(ax + bx) / 2, platform1Y * (t + mid * 0.5), (az + bz) / 2]} thickness={0.3} />
-            </group>
-          );
-        })}
-      <mesh geometry={UNIT_BOX} material={IRON_MATERIAL} position={[0, platform1Y, 0]} scale={[7.2, 1.1, 7.2]} />
-      <mesh geometry={UNIT_BOX} material={IRON_MATERIAL} position={[0, platform1Y + 1.1, 0]} scale={[5.8, 1.0, 5.8]} />
-      <mesh geometry={UNIT_BOX} material={IRON_MATERIAL} position={[0, platform2Y, 0]} scale={[3.6, 0.9, 3.6]} />
-      <mesh
-        geometry={TAPERED_SHAFT}
-        material={IRON_MATERIAL}
-        position={[0, (platform2Y + shaftTop) / 2, 0]}
-        rotation={[0, Math.PI / 4, 0]}
-        scale={[1, shaftTop - platform2Y, 1]}
-      />
-      <mesh geometry={UNIT_BOX} material={IRON_MATERIAL} position={[0, shaftTop + 0.4, 0]} scale={[2.2, 0.8, 2.2]} />
-      <mesh geometry={UNIT_CYLINDER} material={IRON_MATERIAL} position={[0, shaftTop + 2.6, 0]} scale={[0.4, 3.6, 0.4]} />
-    </group>
-  );
+function pyramidCenter(landmark: Landmark): readonly [number, number] {
+  return [centerX(landmark.footprint), landmark.footprint.maxZ - 6];
 }
 
-function Louvre({ landmark, quality }: { readonly landmark: Landmark; readonly quality: Quality }) {
-  const { footprint } = landmark;
-  const pyramidBase = 7;
-  const pyramidHeight = 5.6;
-  const px = centerX(footprint);
-  const pz = footprint.maxZ - 6;
+function LouvrePyramid({ landmark, quality }: { readonly landmark: Landmark; readonly quality: Quality }) {
+  const [px, pz] = pyramidCenter(landmark);
+  const transform = {
+    position: [px, PYRAMID_HEIGHT / 2, pz] as [number, number, number],
+    rotation: [0, Math.PI / 4, 0] as [number, number, number],
+    scale: [PYRAMID_BASE, PYRAMID_HEIGHT, PYRAMID_BASE] as [number, number, number],
+  };
   return (
     <group>
-      <FlatRect rect={grow(footprint, 6)} y={0.012} material={PLAZA_MATERIAL} />
-      <mesh
-        geometry={SQUARE_CONE}
-        material={GLASS_MATERIAL}
-        position={[px, pyramidHeight / 2, pz]}
-        rotation={[0, Math.PI / 4, 0]}
-        scale={[pyramidBase, pyramidHeight, pyramidBase]}
-      />
-      {quality !== 'low' && (
-        <lineSegments
-          geometry={SQUARE_CONE_EDGES}
-          material={GLASS_EDGE_MATERIAL}
-          position={[px, pyramidHeight / 2, pz]}
-          rotation={[0, Math.PI / 4, 0]}
-          scale={[pyramidBase, pyramidHeight, pyramidBase]}
-        />
-      )}
-      <mesh
-        geometry={UNIT_BOX}
-        material={SOCKET_DISC_MATERIAL}
-        position={[px, 0.1, pz]}
-        scale={[pyramidBase + 1.2, 0.2, pyramidBase + 1.2]}
-      />
+      <mesh geometry={SQUARE_CONE} material={GLASS_MATERIAL} {...transform} />
+      {quality !== 'low' && <lineSegments geometry={SQUARE_CONE_EDGES} material={GLASS_EDGE_MATERIAL} {...transform} />}
     </group>
   );
 }
 
-function Cafe({ landmark, quality }: { readonly landmark: Landmark; readonly quality: Quality }) {
+function buildCafe(landmark: Landmark, quality: Quality, batches: Batches): void {
   const { footprint } = landmark;
   const frontZ = footprint.maxZ - 2;
-  const awning = useMemo<InstanceItem[]>(() => {
-    const items: InstanceItem[] = [];
-    const stripeWidth = 1;
-    for (let x = footprint.minX; x < footprint.maxX - 0.01; x += stripeWidth) {
-      const index = Math.round((x - footprint.minX) / stripeWidth);
-      items.push({
-        x: x + stripeWidth / 2,
-        y: 3.35,
-        z: frontZ + 1,
-        sx: stripeWidth,
-        sy: 0.16,
-        sz: 2.2,
-        rx: 0.28,
-        color: index % 2 === 0 ? AWNING_RED : AWNING_WHITE,
-      });
-    }
-    return items;
-  }, [footprint, frontZ]);
-
-  const terrace = useMemo<InstanceItem[]>(() => {
-    if (quality === 'low') return [];
-    const items: InstanceItem[] = [];
-    for (let x = footprint.minX + 1.6; x < footprint.maxX - 1; x += 3.2) {
-      items.push({ x, y: 0.45, z: frontZ + 1, sx: 0.18, sy: 0.9, sz: 0.18, color: LAMP_POST_TONE });
-      items.push({ x, y: 0.95, z: frontZ + 1, sx: 1.3, sy: 0.12, sz: 1.3, color: TABLE_TONE });
-    }
-    return items;
-  }, [footprint, frontZ, quality]);
-
-  return (
-    <group>
-      <FlatRect rect={grow(footprint, 5)} y={0.012} material={PLAZA_MATERIAL} />
-      <Instances geometry={UNIT_BOX} items={awning} />
-      <Instances geometry={UNIT_CYLINDER} items={terrace} />
-      <mesh
-        geometry={UNIT_BOX}
-        material={IRON_MATERIAL}
-        position={[centerX(footprint), 4.6, frontZ + 0.15]}
-        scale={[width(footprint) * 0.7, 1.0, 0.3]}
-      />
-    </group>
-  );
+  batches.flats.push(flatItem(grow(footprint, 5), 0.012, PLAZA_TONE));
+  const stripeWidth = quality === 'low' ? 2 : 1;
+  for (let x = footprint.minX; x < footprint.maxX - 0.01; x += stripeWidth) {
+    const index = Math.round((x - footprint.minX) / stripeWidth);
+    batches.boxes.push({
+      x: x + stripeWidth / 2,
+      y: 3.35,
+      z: frontZ + 1,
+      sx: stripeWidth,
+      sy: 0.16,
+      sz: 2.2,
+      rx: 0.28,
+      color: index % 2 === 0 ? AWNING_RED : AWNING_WHITE,
+    });
+  }
+  batches.boxes.push({ x: centerX(footprint), y: 4.6, z: frontZ + 0.15, sx: width(footprint) * 0.7, sy: 1.0, sz: 0.3, color: IRON_TONE });
+  if (quality === 'low') return;
+  for (let x = footprint.minX + 1.6; x < footprint.maxX - 1; x += 3.2) {
+    batches.cylinders.push({ x, y: 0.45, z: frontZ + 1, sx: 0.18, sy: 0.9, sz: 0.18, color: LAMP_POST_TONE });
+    batches.cylinders.push({ x, y: 0.95, z: frontZ + 1, sx: 1.3, sy: 0.12, sz: 1.3, color: TABLE_TONE });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -590,16 +508,26 @@ export function ParisScene({ definition, seed, quality }: CitySceneProps) {
 
   const layout = useMemo(() => {
     const rng = createRng(hashSeed('paris-cosmetic', seed));
+    const batches: Batches = { boxes: [], cylinders: [], spheres: [], flats: [], rings: [] };
     const landmarkIds = new Set(landmarks.map((landmark) => landmark.id));
     const riverSegments = blockers.filter((blocker) => blocker.id.startsWith('river'));
-    const facadeBlocks = blockers.filter(
-      (blocker) => !landmarkIds.has(blocker.id) && !blocker.id.startsWith('river'),
-    );
+    const facadeBlocks = blockers.filter((blocker) => !landmarkIds.has(blocker.id) && !blocker.id.startsWith('river'));
+
+    batches.flats.push(flatItem(bounds, 0, GROUND_TONE));
+    if (quality !== 'low') {
+      for (const road of roads) {
+        for (const strip of sidewalkStrips(road, 1.2)) batches.flats.push(flatItem(strip, 0.016, SIDEWALK_TONE));
+      }
+    }
+    for (const road of roads) batches.flats.push(flatItem(road, 0.02, ROAD_TONE));
 
     const segments: FacadeSegment[] = facadeBlocks.flatMap((blocker) => splitBlock(blocker, rng));
     for (const landmark of landmarks) {
       const { footprint } = landmark;
-      if (landmark.silhouette === 'museum') {
+      if (landmark.silhouette === 'tower') {
+        batches.flats.push(flatItem(grow(footprint, 7), 0.012, PLAZA_TONE));
+        buildEiffel(landmark, quality, batches.boxes);
+      } else if (landmark.silhouette === 'museum') {
         const wing = 3.6;
         const wings: RectXZ[] = [
           { minX: footprint.minX, maxX: footprint.maxX, minZ: footprint.minZ, maxZ: footprint.minZ + wing },
@@ -609,9 +537,13 @@ export function ParisScene({ definition, seed, quality }: CitySceneProps) {
         for (const rect of wings) {
           segments.push({ rect, height: 5.2, stone: STONE_TONES[0], roof: ROOF_TONES[0], outer: rect });
         }
+        batches.flats.push(flatItem(grow(footprint, 6), 0.012, PLAZA_TONE));
+        const [px, pz] = pyramidCenter(landmark);
+        batches.boxes.push({ x: px, y: 0.1, z: pz, sx: PYRAMID_BASE + 1.2, sy: 0.2, sz: PYRAMID_BASE + 1.2, color: SOCKET_DISC_TONE });
       } else if (landmark.silhouette === 'cafe') {
         const body: RectXZ = { ...footprint, maxZ: footprint.maxZ - 2 };
         segments.push({ rect: body, height: 5.4, stone: CAFE_TONE, roof: ROOF_TONES[2], outer: body });
+        buildCafe(landmark, quality, batches);
       }
     }
 
@@ -620,67 +552,37 @@ export function ParisScene({ definition, seed, quality }: CitySceneProps) {
       const riverX = { minX: riverSegments[0]!.minX, maxX: riverSegments[0]!.maxX };
       for (const road of roads) {
         if (road.minX <= riverX.minX && road.maxX >= riverX.maxX) {
-          const crossesWater = riverSegments.some(
-            (segment) => road.minZ < segment.maxZ && road.maxZ > segment.minZ,
-          );
+          const crossesWater = riverSegments.some((segment) => road.minZ < segment.maxZ && road.maxZ > segment.minZ);
           if (!crossesWater) bridges.push({ ...riverX, minZ: road.minZ, maxZ: road.maxZ });
         }
       }
     }
+    buildRiver(riverSegments, bridges, batches);
+    buildFacades(segments, rng, quality, batches.boxes);
+    buildProps(definition, rng, quality, batches);
 
-    return {
-      riverSegments,
-      bridges,
-      buildings: buildFacades(segments, rng, quality),
-      props: buildProps(definition, rng, quality),
-    };
-  }, [definition, seed, quality, blockers, landmarks, roads]);
+    for (const socket of sockets) {
+      const [x, , z] = socket.position;
+      batches.cylinders.push({ x, y: 0.03, z, sx: 5.2, sy: 0.06, sz: 5.2, color: SOCKET_DISC_TONE });
+      batches.rings.push({ x, y: 0.08, z, sx: 1, sy: 1, sz: 1, rx: FLAT, color: SOCKET_PAD_TONE });
+    }
+
+    for (const batch of Object.values(batches)) batch.sort(byTopDescending);
+    return batches;
+  }, [definition, seed, quality, bounds, blockers, landmarks, roads, sockets]);
 
   const eiffel = landmarks.find((landmark) => landmark.silhouette === 'tower');
   const louvre = landmarks.find((landmark) => landmark.silhouette === 'museum');
-  const cafe = landmarks.find((landmark) => landmark.silhouette === 'cafe');
 
   return (
     <group>
-      <FlatRect rect={bounds} y={0} material={GROUND_MATERIAL} />
-
-      {eiffel && <FlatRect rect={grow(eiffel.footprint, 7)} y={0.012} material={PLAZA_MATERIAL} />}
-
-      {roads.map((road, index) => (
-        <FlatRect key={`sidewalk-${index}`} rect={grow(road, 1.2)} y={0.016} material={SIDEWALK_MATERIAL} />
-      ))}
-      {roads.map((road, index) => (
-        <FlatRect key={`road-${index}`} rect={road} y={0.02} material={ROAD_MATERIAL} />
-      ))}
-
-      <River segments={layout.riverSegments} bridges={layout.bridges} />
-
-      <Instances geometry={UNIT_BOX} items={layout.buildings.bodies} />
-      <Instances geometry={UNIT_BOX} items={layout.buildings.plinths} />
-      <Instances geometry={UNIT_BOX} items={layout.buildings.roofs} />
-      <Instances geometry={UNIT_BOX} items={layout.buildings.chimneys} />
-      <Instances geometry={UNIT_BOX} items={layout.buildings.windows} />
-
-      <Instances geometry={UNIT_CYLINDER} items={layout.props.trunks} />
-      <Instances geometry={UNIT_SPHERE} items={layout.props.crowns} />
-      <Instances geometry={UNIT_CYLINDER} items={layout.props.lampPosts} />
-      <Instances geometry={UNIT_BOX} items={layout.props.lampGlows} />
-
-      {eiffel && <EiffelTower landmark={eiffel} quality={quality} />}
-      {louvre && <Louvre landmark={louvre} quality={quality} />}
-      {cafe && <Cafe landmark={cafe} quality={quality} />}
-
-      {sockets.map((socket) => (
-        <group key={socket.id} position={[socket.position[0], 0, socket.position[2]]}>
-          <mesh
-            geometry={UNIT_CYLINDER}
-            material={SOCKET_DISC_MATERIAL}
-            position={[0, 0.03, 0]}
-            scale={[5.2, 0.06, 5.2]}
-          />
-          <mesh geometry={SOCKET_RING} material={SOCKET_PAD_MATERIAL} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.08, 0]} />
-        </group>
-      ))}
+      <Instances geometry={UNIT_PLANE} items={layout.flats} />
+      <Instances geometry={UNIT_BOX} items={layout.boxes} />
+      <Instances geometry={UNIT_CYLINDER} items={layout.cylinders} />
+      <Instances geometry={UNIT_SPHERE} items={layout.spheres} />
+      <Instances geometry={SOCKET_RING} items={layout.rings} />
+      {eiffel && <EiffelShaft landmark={eiffel} />}
+      {louvre && <LouvrePyramid landmark={louvre} quality={quality} />}
     </group>
   );
 }
