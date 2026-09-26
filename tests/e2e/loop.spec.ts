@@ -23,7 +23,7 @@ const DISPLAY_TOLERANCE_MS = 300;
 test.describe.configure({ mode: 'serial' });
 
 test('full loop: menu → briefing → globe → travel → city → collect → results → retry, best survives reload', async ({ page }) => {
-  test.setTimeout(1_500_000);
+  test.setTimeout(2_400_000);
   const errors = collectPageErrors(page);
   const icons = level('icons');
   const [first, second] = icons.objectives;

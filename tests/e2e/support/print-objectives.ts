@@ -3,7 +3,7 @@
  * picks for every level. The e2e oracle shells out to this so it never duplicates rules.
  */
 import { LEVELS, TARGETS, resolveObjectives } from '@/content';
-import { getCity } from '@/cities';
+import { CITY_IDS, getCity } from '@/cities';
 
 const levels = LEVELS.map((level) => ({
   id: level.id,
@@ -25,7 +25,7 @@ const levels = LEVELS.map((level) => ({
   }),
 }));
 
-const cities = (['paris', 'giza'] as const).map((id) => {
+const cities = CITY_IDS.map((id) => {
   const city = getCity(id);
   return { id, label: city.label, spawn: [city.spawn[0], city.spawn[2]], blockers: city.blockers, bounds: city.bounds };
 });

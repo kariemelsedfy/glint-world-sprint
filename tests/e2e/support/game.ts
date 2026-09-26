@@ -47,12 +47,15 @@ let cached: Oracle | null = null;
  * scene modules, and duplicating the seeded resolver here would hide regressions.
  */
 export function oracle(): Oracle {
-  if (cached) return cached;
+  cached ??= JSON.parse(runSupportScript('print-objectives.ts')) as Oracle;
+  return cached;
+}
+
+/** Runs a `tests/e2e/support/` script under vite-node and returns its stdout. */
+export function runSupportScript(name: string): string {
   const root = resolve(import.meta.dirname, '..', '..', '..');
   const bin = resolve(root, 'node_modules', '.bin', process.platform === 'win32' ? 'vite-node.cmd' : 'vite-node');
-  const json = execFileSync(bin, ['tests/e2e/support/print-objectives.ts'], { cwd: root, encoding: 'utf8' });
-  cached = JSON.parse(json) as Oracle;
-  return cached;
+  return execFileSync(bin, [`tests/e2e/support/${name}`], { cwd: root, encoding: 'utf8' });
 }
 
 export function level(id: LevelId): OracleLevel {
@@ -324,7 +327,10 @@ const MAX_ARRIVAL_TOLERANCE = 2.1;
 const MAX_CARRY = 6;
 /** Stop walking this far inside the pickup radius so the collector's own frame sees the overlap. */
 const PICKUP_MARGIN = 0.5;
+/** Floor for the walking deadline; walkToAndCollect stretches it for long routes at very slow frame rates. */
 const WALK_DEADLINE_MS = 300_000;
+/** Deadline headroom over the route's pure walking time: map reads, re-plans and corrections. */
+const WALK_DEADLINE_FACTOR = 4;
 const COLLECT_POLL_MS = 20_000;
 const MAX_HOLD_MS = 8_000;
 /** Mirrors the Player's frame-delta clamp (1/20 s): slower frames move less per wall-clock second. */
@@ -362,6 +368,17 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function routeLengthFrom(from: readonly [number, number], cityId: CityId, target: readonly [number, number]): number {
+  let length = 0;
+  const cursor: [number, number] = [from[0], from[1]];
+  for (const leg of planRoute(cityId, from, target)) {
+    const index = leg.axis === 'x' ? 0 : 1;
+    length += Math.abs(leg.value - cursor[index]);
+    cursor[index] = leg.value;
+  }
+  return length;
+}
+
 function along(position: readonly [number, number], axis: Leg['axis']): number {
   return axis === 'x' ? position[0] : position[1];
 }
@@ -378,9 +395,11 @@ function along(position: readonly [number, number], axis: Leg['axis']): number {
 export async function walkToAndCollect(page: Page, objective: OracleObjective): Promise<void> {
   const cityId = objective.cityId;
   const target = objective.position;
-  const deadline = Date.now() + WALK_DEADLINE_MS;
+  const started = Date.now();
   let frameMs = await measureFrameMs(page);
   let rate = expectedUnitsPerMs(frameMs);
+  const routeLength = routeLengthFrom(await readPlayer(page, cityId), cityId, target);
+  const deadline = started + Math.max(WALK_DEADLINE_MS, (WALK_DEADLINE_FACTOR * routeLength) / rate);
   let carry = 0;
   let legs: Leg[] | null = null;
   let pending: { axis: Leg['axis']; from: number; sign: number; ms: number; wanted: number } | null = null;
