@@ -1,10 +1,779 @@
 /**
- * San Francisco scenery. Owner: A9.
- * Renders only what san-francisco/definition.ts declares; it never scores or collects.
+ * San Francisco scenery. Owner: A9. Scenery only — no rules, pickups, players, timers or camera.
+ *
+ * Everything solid is derived from `definition.blockers`; nothing walkable is ever covered by a
+ * solid-looking mesh. Hills, the bay and the far half of the Golden Gate live OUTSIDE the city
+ * bounds (z < -72 / x > 72 / x < -72 / z > 72), so they are background only and the playable
+ * ground stays flat. Cosmetic variation uses an independent seeded RNG.
+ *
+ * Render budget: one InstancedMesh per shared geometry (plane, box, cylinder, sphere, ring) with
+ * a single vertex-coloured Lambert material, plus one tiny per-frame water shimmer that mutates a
+ * group position directly (no React state).
  */
-import { CityScenery } from '@/cities/CityScenery';
+import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
+import {
+  BoxGeometry,
+  BufferGeometry,
+  Color,
+  CylinderGeometry,
+  Group,
+  InstancedMesh,
+  MeshLambertMaterial,
+  Object3D,
+  PlaneGeometry,
+  Quaternion,
+  RingGeometry,
+  SphereGeometry,
+  Vector3,
+} from 'three';
 import type { CitySceneProps } from '@/cities/CityScenery';
+import type { Blocker, CityDefinition, Quality, RectXZ, Vec3 } from '@/shared/contracts';
+import { createRng, hashSeed } from '@/shared/seed';
+import type { Rng } from '@/shared/seed';
 
-export function SanFranciscoScene(props: CitySceneProps) {
-  return <CityScenery {...props} />;
+// ---------------------------------------------------------------------------
+// Shared geometry and materials (module singletons)
+// ---------------------------------------------------------------------------
+
+const UNIT_BOX = new BoxGeometry(1, 1, 1);
+const UNIT_CYLINDER = new CylinderGeometry(0.5, 0.5, 1, 6);
+const UNIT_SPHERE = new SphereGeometry(1, 7, 5);
+const UNIT_PLANE = new PlaneGeometry(1, 1);
+const SOCKET_RING = new RingGeometry(1.7, 2.3, 20);
+const WHITE = new MeshLambertMaterial({ color: '#ffffff' });
+
+// Arcade palette
+const INK = '#211333';
+const LAVENDER = '#B6A1E8';
+const CREAM = '#FFF5E9';
+const CYAN = '#22C4EA';
+const HOT_PINK = '#F43FAB';
+const YELLOW = '#FFD963';
+
+const GROUND_TONE = '#e9e0d8';
+const ROAD_TONE = '#8d86a3';
+const ROAD_LINE_TONE = '#f7e7a8';
+const SIDEWALK_TONE = '#f6efe4';
+const CURB_RED = '#e8484f';
+const CURB_WHITE = CREAM;
+const WATER_TONE = '#35b9dd';
+const WATER_DEEP_TONE = '#2593b8';
+const FOAM_TONE = '#c8f2fb';
+const HAZE_TONE = '#d9cdf2';
+const HILL_TONES = ['#c7b4ea', '#b6a1e8', '#a48fdc'] as const;
+const HILL_HOUSE_TONES = ['#f8d7e4', '#fff5e9', '#d7e9fb', '#ffe9b0'] as const;
+const SHADOW_TONE = '#b9a8d6';
+
+const ORANGE = '#f0512a';
+const ORANGE_DARK = '#c33d1c';
+const CABLE_TONE = '#3a2648';
+const CONCRETE_TONE = '#d8d0cc';
+const DECK_TONE = '#6d6382';
+
+const PASTELS = ['#f8c8dc', '#b6a1e8', '#a8e4f0', '#ffe7a8', '#c9f0c2', '#fff5e9', '#ffc9a3'] as const;
+const TRIMS = ['#ffffff', '#fff5e9', '#7146c5', '#211333'] as const;
+const ROOF_TONES = ['#4c3a6b', '#5a4680', '#3d2f57'] as const;
+const WINDOW_TONE = '#2a2340';
+const GLASS_TONE = '#7fd5ee';
+const STEP_TONE = '#d9d0cf';
+
+const BRICK_TONE = '#b8503f';
+const BRICK_DARK = '#8f3a2f';
+const BARN_ROOF_TONE = '#5a4680';
+const CAR_BODY_TONE = '#8e2b1e';
+const CAR_ROOF_TONE = CREAM;
+const RAIL_TONE = '#4d4560';
+const POLE_TONE = '#3a3350';
+const WIRE_TONE = '#2d2540';
+
+const SHED_TONE = '#e8e0d0';
+const SHED_ROOF_TONE = '#d9484a';
+const PLANK_TONE = '#c9a26f';
+const PLANK_DARK = '#a98452';
+const POST_TONE = '#6b4a2e';
+const BUOY_TONE = HOT_PINK;
+const BOAT_TONE = CREAM;
+const BOAT_TRIM_TONE = CYAN;
+
+const LEAF_TONES = ['#4f9a6b', '#3f8a5c', '#62a874'] as const;
+const TRUNK_TONE = '#6a4a33';
+const LAMP_POST_TONE = INK;
+const LAMP_GLOW_TONE = YELLOW;
+const SOCKET_PAD_TONE = CREAM;
+const SOCKET_DISC_TONE = LAVENDER;
+
+const FLAT = -Math.PI / 2;
+const SOCKET_CLEAR_RADIUS = 5;
+
+// ---------------------------------------------------------------------------
+// Instancing helper
+// ---------------------------------------------------------------------------
+
+interface InstanceItem {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly sx: number;
+  readonly sy: number;
+  readonly sz: number;
+  readonly ry?: number;
+  readonly rx?: number;
+  readonly rz?: number;
+  readonly quaternion?: Quaternion;
+  readonly color: string;
+}
+
+const scratchObject = new Object3D();
+const scratchColor = new Color();
+
+function Instances({ geometry, items }: { readonly geometry: BufferGeometry; readonly items: readonly InstanceItem[] }) {
+  const ref = useRef<InstancedMesh>(null);
+
+  useLayoutEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    items.forEach((item, index) => {
+      scratchObject.position.set(item.x, item.y, item.z);
+      if (item.quaternion) scratchObject.quaternion.copy(item.quaternion);
+      else scratchObject.rotation.set(item.rx ?? 0, item.ry ?? 0, item.rz ?? 0);
+      scratchObject.scale.set(item.sx, item.sy, item.sz);
+      scratchObject.updateMatrix();
+      mesh.setMatrixAt(index, scratchObject.matrix);
+      mesh.setColorAt(index, scratchColor.set(item.color));
+    });
+    mesh.count = items.length;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }, [items]);
+
+  if (items.length === 0) return null;
+  return <instancedMesh key={items.length} ref={ref} args={[geometry, WHITE, items.length]} frustumCulled={false} />;
+}
+
+// ---------------------------------------------------------------------------
+// Layout helpers
+// ---------------------------------------------------------------------------
+
+function width(rect: RectXZ): number {
+  return rect.maxX - rect.minX;
+}
+function depth(rect: RectXZ): number {
+  return rect.maxZ - rect.minZ;
+}
+function centerX(rect: RectXZ): number {
+  return (rect.minX + rect.maxX) / 2;
+}
+function centerZ(rect: RectXZ): number {
+  return (rect.minZ + rect.maxZ) / 2;
+}
+function grow(rect: RectXZ, by: number): RectXZ {
+  return { minX: rect.minX - by, maxX: rect.maxX + by, minZ: rect.minZ - by, maxZ: rect.maxZ + by };
+}
+function shift(rect: RectXZ, dx: number, dz: number): RectXZ {
+  return { minX: rect.minX + dx, maxX: rect.maxX + dx, minZ: rect.minZ + dz, maxZ: rect.maxZ + dz };
+}
+function contains(rect: RectXZ, x: number, z: number): boolean {
+  return x >= rect.minX && x <= rect.maxX && z >= rect.minZ && z <= rect.maxZ;
+}
+function boxItem(rect: RectXZ, y0: number, height: number, color: string): InstanceItem {
+  return { x: centerX(rect), y: y0 + height / 2, z: centerZ(rect), sx: width(rect), sy: height, sz: depth(rect), color };
+}
+function flatItem(rect: RectXZ, y: number, color: string): InstanceItem {
+  return { x: centerX(rect), y, z: centerZ(rect), sx: width(rect), sy: depth(rect), sz: 1, rx: FLAT, color };
+}
+/** Hard offset drop shadow under a footprint: the cartoon "5-7px bottom shadow" translated to 3D. */
+function shadowItem(rect: RectXZ): InstanceItem {
+  return flatItem(shift(grow(rect, 0.2), 0.9, 0.9), 0.014, SHADOW_TONE);
+}
+
+function top(item: InstanceItem): number {
+  return item.rx === undefined && item.quaternion === undefined ? item.y + item.sy / 2 : item.y;
+}
+function byTopDescending(a: InstanceItem, b: InstanceItem): number {
+  return top(b) - top(a);
+}
+
+const UP = new Vector3(0, 1, 0);
+const scratchA = new Vector3();
+const scratchB = new Vector3();
+
+function strutItem(from: Vec3, to: Vec3, thickness: number, color: string): InstanceItem {
+  const a = scratchA.set(...from);
+  const b = scratchB.set(...to);
+  const direction = b.clone().sub(a);
+  const length = direction.length();
+  const mid = a.clone().add(b).multiplyScalar(0.5);
+  return {
+    x: mid.x,
+    y: mid.y,
+    z: mid.z,
+    sx: thickness,
+    sy: length,
+    sz: thickness,
+    quaternion: new Quaternion().setFromUnitVectors(UP, direction.normalize()),
+    color,
+  };
+}
+
+interface Batches {
+  readonly boxes: InstanceItem[];
+  readonly cylinders: InstanceItem[];
+  readonly spheres: InstanceItem[];
+  readonly flats: InstanceItem[];
+  readonly rings: InstanceItem[];
+}
+
+function isClearForProps(definition: CityDefinition, x: number, z: number, keepOffRoads: boolean): boolean {
+  if (!contains(grow(definition.bounds, -2), x, z)) return false;
+  for (const blocker of definition.blockers) if (contains(grow(blocker, 2.5), x, z)) return false;
+  for (const landmark of definition.landmarks) if (contains(grow(landmark.footprint, 4), x, z)) return false;
+  if (keepOffRoads) for (const road of definition.roads) if (contains(grow(road, 1.5), x, z)) return false;
+  for (const socket of definition.sockets) {
+    if (Math.hypot(socket.position[0] - x, socket.position[2] - z) < SOCKET_CLEAR_RADIUS) return false;
+  }
+  if (Math.hypot(definition.spawn[0] - x, definition.spawn[2] - z) < SOCKET_CLEAR_RADIUS) return false;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Ground, roads, painted curbs, trolley wires
+// ---------------------------------------------------------------------------
+
+function buildStreets(definition: CityDefinition, quality: Quality, batches: Batches): void {
+  const { bounds, roads } = definition;
+  batches.flats.push(flatItem(bounds, 0, GROUND_TONE));
+
+  for (const road of roads) {
+    const horizontal = width(road) >= depth(road);
+    if (quality !== 'low') {
+      // Kerb strips: cream pavement with painted red / white kerb segments (SF's famous curb paint).
+      const strips: RectXZ[] = horizontal
+        ? [
+            { minX: road.minX, maxX: road.maxX, minZ: road.minZ - 1.4, maxZ: road.minZ },
+            { minX: road.minX, maxX: road.maxX, minZ: road.maxZ, maxZ: road.maxZ + 1.4 },
+          ]
+        : [
+            { minX: road.minX - 1.4, maxX: road.minX, minZ: road.minZ, maxZ: road.maxZ },
+            { minX: road.maxX, maxX: road.maxX + 1.4, minZ: road.minZ, maxZ: road.maxZ },
+          ];
+      for (const strip of strips) batches.flats.push(flatItem(strip, 0.016, SIDEWALK_TONE));
+      const length = horizontal ? width(road) : depth(road);
+      for (let along = 0; along < length; along += 6) {
+        const paint = Math.floor(along / 6) % 5 === 0 ? CURB_RED : CURB_WHITE;
+        for (const side of [-1, 1] as const) {
+          const item: InstanceItem = horizontal
+            ? { x: road.minX + along + 3, y: 0.15, z: centerZ(road) + side * (depth(road) / 2 + 0.15), sx: 5.6, sy: 0.3, sz: 0.3, color: paint }
+            : { x: centerX(road) + side * (width(road) / 2 + 0.15), y: 0.15, z: road.minZ + along + 3, sx: 0.3, sy: 0.3, sz: 5.6, color: paint };
+          batches.boxes.push(item);
+        }
+      }
+    }
+    batches.flats.push(flatItem(road, 0.02, ROAD_TONE));
+    // Dashed centre line.
+    const length = horizontal ? width(road) : depth(road);
+    const dash = quality === 'low' ? 10 : 5;
+    for (let along = 1; along < length - 2; along += dash * 2) {
+      batches.flats.push(
+        horizontal
+          ? { x: road.minX + along + dash / 2, y: 0.03, z: centerZ(road), sx: dash, sy: 0.35, sz: 1, rx: FLAT, color: ROAD_LINE_TONE }
+          : { x: centerX(road), y: 0.03, z: road.minZ + along + dash / 2, sx: 0.35, sy: dash, sz: 1, rx: FLAT, color: ROAD_LINE_TONE },
+      );
+    }
+  }
+
+  // Cable-car tracks + overhead trolley wires along the main N-S street (the one through spawn).
+  const mainStreet = roads.find((road) => depth(road) > width(road) && road.minX <= 0 && road.maxX >= 0);
+  if (!mainStreet) return;
+  for (const offset of [-1.6, 1.6]) {
+    batches.flats.push({ x: centerX(mainStreet) + offset, y: 0.035, z: centerZ(mainStreet), sx: 0.3, sy: depth(mainStreet), sz: 1, rx: FLAT, color: RAIL_TONE });
+  }
+  batches.flats.push({ x: centerX(mainStreet), y: 0.035, z: centerZ(mainStreet), sx: 0.18, sy: depth(mainStreet), sz: 1, rx: FLAT, color: INK });
+  if (quality === 'low') return;
+  const wireY = 6.2;
+  for (const side of [-1, 1] as const) {
+    const x = centerX(mainStreet) + side * (width(mainStreet) / 2 + 0.7);
+    for (let z = mainStreet.minZ + 6; z < mainStreet.maxZ; z += 16) {
+      if (!isClearForProps(definition, x, z, false)) continue;
+      batches.cylinders.push({ x, y: wireY / 2, z, sx: 0.35, sy: wireY, sz: 0.35, color: POLE_TONE });
+      batches.boxes.push({ x: x - side * 1.8, y: wireY - 0.15, z, sx: 3.6, sy: 0.16, sz: 0.16, color: POLE_TONE });
+    }
+    batches.boxes.push({ x: centerX(mainStreet) + side * 1.6, y: wireY, z: centerZ(mainStreet), sx: 0.08, sy: 0.08, sz: depth(mainStreet), color: WIRE_TONE });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Bay water, background hills, haze
+// ---------------------------------------------------------------------------
+
+const FAR = 260;
+
+function buildBackground(definition: CityDefinition, rng: Rng, quality: Quality, batches: Batches): void {
+  const { bounds } = definition;
+  // Water: the whole bay north and east of the playable block.
+  batches.flats.push(flatItem({ minX: -FAR, maxX: FAR, minZ: -FAR, maxZ: bounds.minZ }, -0.3, WATER_TONE));
+  batches.flats.push(flatItem({ minX: bounds.maxX, maxX: FAR, minZ: bounds.minZ, maxZ: FAR }, -0.3, WATER_TONE));
+  batches.flats.push(flatItem({ minX: -FAR, maxX: FAR, minZ: -FAR, maxZ: -150 }, -0.25, WATER_DEEP_TONE));
+  // Sea wall along the north and east shore so the ground reads as a solid quay edge.
+  batches.boxes.push({ x: 0, y: -0.2, z: bounds.minZ - 0.6, sx: width(bounds) + 1.2, sy: 1.0, sz: 1.2, color: CONCRETE_TONE });
+  batches.boxes.push({ x: bounds.maxX + 0.6, y: -0.2, z: 0, sx: 1.2, sy: 1.0, sz: depth(bounds) + 1.2, color: CONCRETE_TONE });
+
+  // Distant Marin headlands across the water (north-west) and the Berkeley hills (east).
+  const hills: { x: number; z: number; w: number; d: number; h: number }[] = [
+    { x: -120, z: -175, w: 120, d: 60, h: 14 },
+    { x: -60, z: -200, w: 90, d: 50, h: 22 },
+    { x: 30, z: -205, w: 110, d: 60, h: 10 },
+    { x: 200, z: -60, w: 80, d: 140, h: 12 },
+    { x: 205, z: 80, w: 70, d: 120, h: 18 },
+  ];
+  hills.forEach((hill, index) => {
+    const tiers = quality === 'low' ? 2 : 3;
+    for (let tier = 0; tier < tiers; tier += 1) {
+      const scale = 1 - tier * 0.28;
+      batches.boxes.push({
+        x: hill.x,
+        y: (hill.h * (tier + 1)) / tiers / 2 - 0.3,
+        z: hill.z,
+        sx: hill.w * scale,
+        sy: (hill.h * (tier + 1)) / tiers,
+        sz: hill.d * scale,
+        color: HILL_TONES[(index + tier) % HILL_TONES.length]!,
+      });
+    }
+  });
+
+  // Stepped residential hills west and south of the playable blocks (background only, outside bounds).
+  const tiers = [
+    { rect: { minX: -FAR, maxX: bounds.minX - 0.5, minZ: -FAR * 0.5, maxZ: FAR }, h: 3 },
+    { rect: { minX: -FAR, maxX: bounds.minX - 14, minZ: -FAR * 0.5 + 10, maxZ: FAR }, h: 7 },
+    { rect: { minX: -FAR, maxX: bounds.minX - 30, minZ: -FAR * 0.5 + 20, maxZ: FAR }, h: 12 },
+    { rect: { minX: bounds.minX - 0.5, maxX: bounds.maxX + 0.5, minZ: bounds.maxZ + 0.5, maxZ: FAR }, h: 3 },
+    { rect: { minX: bounds.minX - 0.5, maxX: bounds.maxX + 0.5, minZ: bounds.maxZ + 14, maxZ: FAR }, h: 7 },
+    { rect: { minX: bounds.minX - 0.5, maxX: bounds.maxX + 0.5, minZ: bounds.maxZ + 32, maxZ: FAR }, h: 12 },
+  ];
+  tiers.forEach((tier, index) => batches.boxes.push(boxItem(tier.rect, -0.3, tier.h, HILL_TONES[index % 3]!)));
+
+  // Tiny pastel houses climbing the hills, plus stepped streets between them.
+  const houseCount = quality === 'low' ? 30 : 90;
+  for (let index = 0; index < houseCount; index += 1) {
+    const west = rng.next() < 0.55;
+    const x = west ? bounds.minX - 3 - rng.next() * 40 : bounds.minX + rng.next() * width(bounds);
+    const z = west ? -60 + rng.next() * 130 : bounds.maxZ + 3 + rng.next() * 42;
+    const tierHeight = west
+      ? x < bounds.minX - 30 ? 12 : x < bounds.minX - 14 ? 7 : 3
+      : z > bounds.maxZ + 32 ? 12 : z > bounds.maxZ + 14 ? 7 : 3;
+    const h = 3 + rng.next() * 3;
+    const w = 3 + rng.next() * 2;
+    batches.boxes.push({ x, y: tierHeight - 0.3 + h / 2, z, sx: w, sy: h, sz: w, color: rng.pick(HILL_HOUSE_TONES) });
+    batches.boxes.push({ x, y: tierHeight - 0.3 + h + 0.35, z, sx: w * 0.8, sy: 0.7, sz: w * 0.8, color: rng.pick(ROOF_TONES) });
+  }
+  for (let z = -50; z < 120; z += 24) {
+    batches.boxes.push({ x: bounds.minX - 22, y: 4, z, sx: 44, sy: 8.5, sz: 3, color: DECK_TONE });
+  }
+
+  // Restrained haze band on the horizon so the bay fades out instead of ending hard.
+  batches.boxes.push({ x: 0, y: 6, z: -FAR + 20, sx: FAR * 2.2, sy: 14, sz: 2, color: HAZE_TONE });
+  batches.boxes.push({ x: FAR - 20, y: 6, z: 0, sx: 2, sy: 14, sz: FAR * 2.2, color: HAZE_TONE });
+}
+
+// ---------------------------------------------------------------------------
+// Golden Gate Bridge (hero). South tower stands on the approach blocker; the deck and north tower
+// run out over the bay north of the playable bounds (z < -72), where nobody can walk.
+// ---------------------------------------------------------------------------
+
+const TOWER_HEIGHT = 46;
+const DECK_Y = 9;
+const DECK_HALF_WIDTH = 5;
+const NORTH_TOWER_Z = -104;
+const DECK_END_Z = -160;
+
+function buildGoldenGate(approach: Blocker, quality: Quality, batches: Batches): void {
+  const cx = centerX(approach);
+  const southTowerZ = centerZ(approach) - 3;
+
+  // Approach: concrete plinth covering the whole blocker, toll-plaza kiosks and a ramp to deck height.
+  batches.flats.push(shadowItem(approach));
+  batches.boxes.push(boxItem(approach, 0, 1.2, CONCRETE_TONE));
+  batches.boxes.push(boxItem(grow(approach, -0.6), 1.2, 0.3, LAVENDER));
+  const rampRect: RectXZ = { minX: cx - DECK_HALF_WIDTH - 1, maxX: cx + DECK_HALF_WIDTH + 1, minZ: approach.minZ, maxZ: approach.maxZ - 1 };
+  batches.boxes.push(boxItem(rampRect, 1.2, DECK_Y - 1.4, DECK_TONE));
+  batches.boxes.push(boxItem(grow(rampRect, 0.3), DECK_Y - 0.5, 0.5, ORANGE));
+  for (const side of [-1, 1] as const) {
+    const x = cx + side * (DECK_HALF_WIDTH + 4.5);
+    batches.boxes.push({ x, y: 2.9, z: approach.maxZ - 5, sx: 3, sy: 3.4, sz: 3, color: CREAM });
+    batches.boxes.push({ x, y: 4.9, z: approach.maxZ - 5, sx: 4, sy: 0.6, sz: 4, color: ORANGE });
+    // Cypress trees flanking the plaza.
+    for (const z of [approach.minZ + 4, approach.minZ + 10, approach.maxZ - 12]) {
+      batches.cylinders.push({ x: x + side * 3.5, y: 2.2, z, sx: 0.6, sy: 2, sz: 0.6, color: TRUNK_TONE });
+      batches.spheres.push({ x: x + side * 3.5, y: 4.6, z, sx: 1.4, sy: 2.6, sz: 1.4, color: LEAF_TONES[1] });
+    }
+  }
+
+  // Deck.
+  const deckLength = approach.minZ - DECK_END_Z;
+  const deckZ = (approach.minZ + DECK_END_Z) / 2;
+  batches.boxes.push({ x: cx, y: DECK_Y - 0.6, z: deckZ, sx: DECK_HALF_WIDTH * 2 + 1, sy: 1.2, sz: deckLength, color: DECK_TONE });
+  batches.boxes.push({ x: cx, y: DECK_Y - 1.7, z: deckZ, sx: DECK_HALF_WIDTH * 2 - 1, sy: 1.2, sz: deckLength, color: ORANGE_DARK });
+  for (const side of [-1, 1] as const) {
+    batches.boxes.push({ x: cx + side * (DECK_HALF_WIDTH + 0.3), y: DECK_Y + 0.5, z: deckZ, sx: 0.4, sy: 1.0, sz: deckLength, color: ORANGE });
+  }
+  if (quality !== 'low') {
+    for (let z = approach.minZ - 6; z > DECK_END_Z; z -= 12) {
+      batches.flats.push({ x: cx, y: DECK_Y + 0.02, z, sx: 0.4, sy: 6, sz: 1, rx: FLAT, color: ROAD_LINE_TONE });
+    }
+  }
+
+  // Towers: two legs joined by portal braces, on a pier block in the water.
+  for (const towerZ of [southTowerZ, NORTH_TOWER_Z]) {
+    const baseY = towerZ === southTowerZ ? 1.2 : -0.3;
+    if (towerZ !== southTowerZ) {
+      batches.boxes.push({ x: cx, y: 1.5, z: towerZ, sx: DECK_HALF_WIDTH * 2 + 8, sy: 4, sz: 12, color: CONCRETE_TONE });
+    }
+    for (const side of [-1, 1] as const) {
+      const x = cx + side * (DECK_HALF_WIDTH + 0.6);
+      batches.boxes.push({ x, y: baseY + TOWER_HEIGHT / 2, z: towerZ, sx: 2.6, sy: TOWER_HEIGHT, sz: 3.2, color: ORANGE });
+      batches.boxes.push({ x: x + side * 0.2, y: baseY + TOWER_HEIGHT / 2, z: towerZ, sx: 2.2, sy: TOWER_HEIGHT - 2, sz: 3.6, color: ORANGE_DARK });
+      batches.boxes.push({ x, y: baseY + TOWER_HEIGHT + 0.6, z: towerZ, sx: 3.2, sy: 1.2, sz: 3.8, color: ORANGE });
+    }
+    const braceYs = [DECK_Y + 6, DECK_Y + 16, DECK_Y + 26, TOWER_HEIGHT - 2];
+    for (const y of braceYs) {
+      batches.boxes.push({ x: cx, y: baseY + y, z: towerZ, sx: DECK_HALF_WIDTH * 2 + 1, sy: 2.4, sz: 3.4, color: ORANGE });
+      if (quality !== 'low') {
+        batches.boxes.push({ x: cx, y: baseY + y, z: towerZ + 1.75, sx: DECK_HALF_WIDTH * 2 + 1, sy: 1.2, sz: 0.2, color: ORANGE_DARK });
+      }
+    }
+    batches.boxes.push({ x: cx, y: baseY + 3, z: towerZ, sx: DECK_HALF_WIDTH * 2 + 1, sy: 6, sz: 3.4, color: ORANGE });
+  }
+
+  // Main cables: catenary from the south anchorage, over both towers, down to the far anchorage.
+  const anchorSouth: [number, number] = [approach.maxZ - 2, DECK_Y];
+  const anchorNorth: [number, number] = [DECK_END_Z + 6, DECK_Y];
+  const topY = TOWER_HEIGHT + 0.2;
+  const spans: { z0: number; y0: number; z1: number; y1: number; sag: number }[] = [
+    { z0: anchorSouth[0], y0: anchorSouth[1], z1: southTowerZ, y1: topY + 1.2, sag: 0 },
+    { z0: southTowerZ, y0: topY + 1.2, z1: NORTH_TOWER_Z, y1: topY - 0.3, sag: 26 },
+    { z0: NORTH_TOWER_Z, y0: topY - 0.3, z1: anchorNorth[0], y1: anchorNorth[1], sag: 0 },
+  ];
+  const segments = quality === 'low' ? 6 : 12;
+  for (const side of [-1, 1] as const) {
+    const x = cx + side * (DECK_HALF_WIDTH + 0.6);
+    for (const span of spans) {
+      const points: Vec3[] = [];
+      for (let index = 0; index <= segments; index += 1) {
+        const t = index / segments;
+        const z = span.z0 + (span.z1 - span.z0) * t;
+        const y = span.y0 + (span.y1 - span.y0) * t - span.sag * 4 * t * (1 - t);
+        points.push([x, y, z]);
+      }
+      for (let index = 0; index < points.length - 1; index += 1) {
+        batches.boxes.push(strutItem(points[index]!, points[index + 1]!, 0.55, CABLE_TONE));
+      }
+      if (quality === 'low' || span.sag === 0) continue;
+      // Vertical hangers.
+      for (let index = 1; index < points.length - 1; index += 1) {
+        const [px, py, pz] = points[index]!;
+        batches.boxes.push({ x: px, y: (py + DECK_Y) / 2, z: pz, sx: 0.16, sy: py - DECK_Y, sz: 0.16, color: CABLE_TONE });
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pastel bay-window Victorian rows
+// ---------------------------------------------------------------------------
+
+function buildVictorianRow(block: Blocker, rng: Rng, quality: Quality, batches: Batches): void {
+  batches.flats.push(shadowItem(block));
+  const alongX = width(block) >= depth(block);
+  const length = alongX ? width(block) : depth(block);
+  const count = Math.max(2, Math.round(length / 4.5));
+  const houseLength = length / count;
+  for (let index = 0; index < count; index += 1) {
+    const start = index * houseLength;
+    const rect: RectXZ = alongX
+      ? { minX: block.minX + start, maxX: block.minX + start + houseLength, minZ: block.minZ, maxZ: block.maxZ }
+      : { minX: block.minX, maxX: block.maxX, minZ: block.minZ + start, maxZ: block.minZ + start + houseLength };
+    const body = grow(rect, -0.15);
+    const height = 6.5 + rng.int(3) * 1.4;
+    const pastel = rng.pick(PASTELS);
+    const trim = rng.pick(TRIMS);
+    const roof = rng.pick(ROOF_TONES);
+    batches.boxes.push(boxItem(body, 0, height, pastel));
+    // Cornice + roof cap (highlighted top face).
+    batches.boxes.push(boxItem(grow(body, 0.25), height, 0.5, trim));
+    batches.boxes.push(boxItem(grow(body, -0.4), height + 0.5, 1.6, roof));
+    batches.boxes.push({ x: centerX(body), y: height + 2.6, z: centerZ(body), sx: 1.6, sy: 1.0, sz: 1.6, color: rng.pick(HILL_HOUSE_TONES) });
+
+    // Bay window jutting out of the +Z face (the one the chase camera sees), two storeys tall.
+    const bayWidth = Math.min(2.6, width(body) * 0.55);
+    const bayX = centerX(body);
+    batches.boxes.push({ x: bayX, y: 1.4 + (height - 2.2) / 2, z: body.maxZ + 0.5, sx: bayWidth, sy: height - 2.2, sz: 1.0, color: pastel });
+    batches.boxes.push({ x: bayX, y: height - 0.6, z: body.maxZ + 0.6, sx: bayWidth + 0.5, sy: 0.4, sz: 1.3, color: trim });
+    // Steps to the front door.
+    batches.boxes.push({ x: body.minX + 1.0, y: 0.35, z: body.maxZ + 0.6, sx: 1.2, sy: 0.7, sz: 1.2, color: STEP_TONE });
+    batches.boxes.push({ x: body.minX + 1.0, y: 1.9, z: body.maxZ + 0.02, sx: 1.0, sy: 2.2, sz: 0.1, color: WINDOW_TONE });
+    if (quality === 'low') continue;
+    for (let y = 2.4; y < height - 1.4; y += 2.6) {
+      batches.boxes.push({ x: bayX, y: y + 0.8, z: body.maxZ + 1.02, sx: bayWidth - 0.8, sy: 1.4, sz: 0.08, color: GLASS_TONE });
+      batches.boxes.push({ x: bayX - bayWidth / 2 - 0.02, y: y + 0.8, z: body.maxZ + 0.5, sx: 0.08, sy: 1.4, sz: 0.6, color: GLASS_TONE });
+      batches.boxes.push({ x: bayX + bayWidth / 2 + 0.02, y: y + 0.8, z: body.maxZ + 0.5, sx: 0.08, sy: 1.4, sz: 0.6, color: GLASS_TONE });
+      if (index === 0) batches.boxes.push({ x: body.minX - 0.04, y: y + 0.8, z: centerZ(body), sx: 0.08, sy: 1.4, sz: 1.0, color: GLASS_TONE });
+      if (index === count - 1) batches.boxes.push({ x: body.maxX + 0.04, y: y + 0.8, z: centerZ(body), sx: 0.08, sy: 1.4, sz: 1.0, color: GLASS_TONE });
+    }
+    // Trim band between storeys.
+    batches.boxes.push({ x: centerX(body), y: 2.0, z: body.maxZ + 0.04, sx: width(body), sy: 0.25, sz: 0.1, color: trim });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cable-car barn, wharf sheds, hill terrace, bay pier
+// ---------------------------------------------------------------------------
+
+function buildCableBarn(block: Blocker, quality: Quality, batches: Batches): void {
+  batches.flats.push(shadowItem(block));
+  const forecourtDepth = 5;
+  const barn: RectXZ = { ...block, minZ: block.minZ + forecourtDepth };
+  const forecourt: RectXZ = { ...block, maxZ: block.minZ + forecourtDepth };
+  const height = 9;
+  batches.boxes.push(boxItem(barn, 0, height, BRICK_TONE));
+  batches.boxes.push(boxItem(grow(barn, 0.3), height, 0.6, CREAM));
+  batches.boxes.push(boxItem(grow(barn, -0.6), height + 0.6, 1.6, BARN_ROOF_TONE));
+  batches.boxes.push(boxItem(grow(barn, -2.5), height + 2.2, 1.2, CREAM));
+  // Big arched doorway (dark) with a yellow signboard above it, on the -Z (forecourt) face.
+  batches.boxes.push({ x: centerX(barn), y: 3, z: barn.minZ - 0.04, sx: 6, sy: 6, sz: 0.1, color: WINDOW_TONE });
+  batches.cylinders.push({ x: centerX(barn), y: 6, z: barn.minZ - 0.04, sx: 6, sy: 0.1, sz: 6, rx: Math.PI / 2, color: WINDOW_TONE });
+  batches.boxes.push({ x: centerX(barn), y: 7.9, z: barn.minZ - 0.2, sx: 9, sy: 1.2, sz: 0.3, color: YELLOW });
+  batches.boxes.push({ x: centerX(barn), y: 7.9, z: barn.minZ - 0.36, sx: 8.6, sy: 0.7, sz: 0.06, color: INK });
+  // Smokestack.
+  batches.cylinders.push({ x: barn.maxX - 2, y: height + 4, z: barn.maxZ - 3, sx: 1.6, sy: 8, sz: 1.6, color: BRICK_DARK });
+  batches.cylinders.push({ x: barn.maxX - 2, y: height + 8.2, z: barn.maxZ - 3, sx: 1.9, sy: 0.5, sz: 1.9, color: INK });
+
+  // Forecourt: paving, rails, and a parked cable car (inside the blocker, so it is collidable).
+  batches.flats.push(flatItem(forecourt, 0.018, STEP_TONE));
+  const carX = centerX(barn);
+  const carZ = centerZ(forecourt);
+  for (const offset of [-1.2, 1.2]) {
+    batches.flats.push({ x: carX + offset, y: 0.03, z: carZ, sx: 0.25, sy: forecourtDepth, sz: 1, rx: FLAT, color: RAIL_TONE });
+  }
+  batches.boxes.push({ x: carX, y: 0.5, z: carZ, sx: 2.6, sy: 0.6, sz: 4.4, color: INK });
+  batches.boxes.push({ x: carX, y: 1.9, z: carZ, sx: 2.8, sy: 2.2, sz: 4.6, color: CAR_BODY_TONE });
+  batches.boxes.push({ x: carX, y: 3.15, z: carZ, sx: 3.2, sy: 0.4, sz: 5.0, color: CAR_ROOF_TONE });
+  batches.boxes.push({ x: carX, y: 3.55, z: carZ, sx: 2.2, sy: 0.5, sz: 3.6, color: CAR_BODY_TONE });
+  batches.boxes.push({ x: carX, y: 2.2, z: carZ, sx: 2.9, sy: 1.0, sz: 3.2, color: GLASS_TONE });
+  batches.boxes.push({ x: carX, y: 1.2, z: carZ, sx: 2.9, sy: 0.25, sz: 4.7, color: YELLOW });
+  if (quality === 'low') return;
+  for (const z of [carZ - 1.6, carZ + 1.6]) {
+    for (const x of [carX - 1.35, carX + 1.35]) {
+      batches.cylinders.push({ x, y: 0.5, z, sx: 0.9, sy: 0.4, sz: 0.9, rz: Math.PI / 2, color: INK });
+    }
+  }
+  // Barn side windows facing +Z (camera side).
+  for (let x = barn.minX + 2; x < barn.maxX - 1; x += 2.6) {
+    batches.boxes.push({ x, y: 5.5, z: barn.maxZ + 0.04, sx: 1.4, sy: 2.6, sz: 0.1, color: GLASS_TONE });
+    batches.boxes.push({ x, y: 6.9, z: barn.maxZ + 0.06, sx: 1.6, sy: 0.2, sz: 0.1, color: CREAM });
+  }
+}
+
+function buildWharfSheds(block: Blocker, quality: Quality, batches: Batches): void {
+  batches.flats.push(shadowItem(block));
+  batches.flats.push(flatItem(block, 0.018, PLANK_TONE));
+  const shedDepth = (depth(block) - 2) / 2;
+  const sheds: RectXZ[] = [
+    { minX: block.minX, maxX: block.maxX, minZ: block.minZ, maxZ: block.minZ + shedDepth },
+    { minX: block.minX, maxX: block.maxX, minZ: block.maxZ - shedDepth, maxZ: block.maxZ },
+  ];
+  sheds.forEach((shed, index) => {
+    const height = 4.5;
+    batches.boxes.push(boxItem(shed, 0, height, SHED_TONE));
+    batches.boxes.push(boxItem(grow(shed, 0.2), height, 0.4, INK));
+    // Pitched roof from two slanted slabs.
+    const half = depth(shed) / 2;
+    const slope = 0.62;
+    const slabLength = half / Math.cos(slope) + 0.4;
+    const rise = half * Math.tan(slope);
+    for (const side of [-1, 1] as const) {
+      batches.boxes.push({
+        x: centerX(shed),
+        y: height + 0.4 + rise / 2,
+        z: centerZ(shed) + (side * half) / 2,
+        sx: width(shed) + 0.6,
+        sy: 0.35,
+        sz: slabLength,
+        rx: side * slope,
+        color: index === 0 ? SHED_ROOF_TONE : CYAN,
+      });
+    }
+    batches.boxes.push({ x: centerX(shed), y: height + 0.4 + rise, z: centerZ(shed), sx: width(shed) + 0.8, sy: 0.4, sz: 0.5, color: INK });
+    batches.boxes.push({ x: centerX(shed), y: 2.2, z: shed.maxZ + 0.04, sx: width(shed) * 0.5, sy: 3.6, sz: 0.1, color: WINDOW_TONE });
+    if (quality === 'low') return;
+    for (let x = shed.minX + 1.5; x < shed.maxX; x += 3) {
+      batches.boxes.push({ x, y: height + 0.4 + rise * 0.55, z: shed.maxZ + 0.4, sx: 1.2, sy: 1.0, sz: 0.2, color: CREAM });
+    }
+  });
+  // Crab pots and barrels in the alley between the sheds.
+  if (quality === 'low') return;
+  for (let x = block.minX + 2; x < block.maxX - 1; x += 3.5) {
+    batches.cylinders.push({ x, y: 0.6, z: centerZ(block), sx: 1.1, sy: 1.2, sz: 1.1, color: x % 7 < 3.5 ? POST_TONE : YELLOW });
+  }
+}
+
+function buildHillTerrace(block: Blocker, rng: Rng, quality: Quality, batches: Batches): void {
+  batches.flats.push(shadowItem(block));
+  // Stepped tiers climbing toward +X, each carrying a row of houses: a hill you can see but never walk.
+  const tiers = 3;
+  const tierWidth = width(block) / tiers;
+  for (let tier = 0; tier < tiers; tier += 1) {
+    const rect: RectXZ = { minX: block.minX + tier * tierWidth, maxX: block.maxX, minZ: block.minZ, maxZ: block.maxZ };
+    const h = 1.5 + tier * 1.5;
+    batches.boxes.push(boxItem(rect, 0, h, HILL_TONES[tier]!));
+    batches.boxes.push(boxItem({ ...rect, maxX: rect.minX + tierWidth }, h, 0.2, LEAF_TONES[2]));
+    // Stair strip.
+    batches.boxes.push({ x: rect.minX + 0.5, y: h - 0.5, z: centerZ(rect), sx: 1.0, sy: 1.0, sz: 3, color: STEP_TONE });
+    const houses = quality === 'low' ? 2 : 3;
+    for (let index = 0; index < houses; index += 1) {
+      const hx = rect.minX + tierWidth / 2;
+      const hz = block.minZ + 3 + (index * (depth(block) - 6)) / Math.max(1, houses - 1);
+      const hh = 3.2 + rng.next() * 1.4;
+      batches.boxes.push({ x: hx, y: h + hh / 2, z: hz, sx: 3.2, sy: hh, sz: 3.2, color: rng.pick(PASTELS) });
+      batches.boxes.push({ x: hx, y: h + hh + 0.3, z: hz, sx: 2.6, sy: 0.6, sz: 2.6, color: rng.pick(ROOF_TONES) });
+      batches.boxes.push({ x: hx, y: h + 1.4, z: hz + 1.64, sx: 0.9, sy: 1.2, sz: 0.1, color: WINDOW_TONE });
+    }
+  }
+}
+
+function buildBayPier(block: Blocker, quality: Quality, batches: Batches): void {
+  // A small harbour inlet inside the blocker with a plank pier down the middle: water you cannot enter.
+  batches.boxes.push(boxItem(grow(block, 0.1), 0, 0.5, CONCRETE_TONE));
+  batches.flats.push(flatItem(grow(block, -0.8), 0.51, WATER_TONE));
+  const pier: RectXZ = { minX: block.minX, maxX: block.maxX - 2, minZ: centerZ(block) - 2, maxZ: centerZ(block) + 2 };
+  batches.boxes.push(boxItem(pier, 0.5, 0.6, PLANK_TONE));
+  for (let x = pier.minX + 2; x < pier.maxX; x += 3) {
+    for (const z of [pier.minZ + 0.4, pier.maxZ - 0.4]) {
+      batches.cylinders.push({ x, y: 1.2, z, sx: 0.5, sy: 1.6, sz: 0.5, color: POST_TONE });
+    }
+    batches.boxes.push({ x, y: 1.1, z: centerZ(pier), sx: 0.1, sy: 0.02, sz: 4, color: PLANK_DARK });
+  }
+  // Two little sailboats.
+  for (const [bx, bz, ry] of [
+    [block.minX + 5, block.minZ + 3, 0.4],
+    [block.maxX - 5, block.maxZ - 3.5, -0.9],
+  ] as const) {
+    batches.boxes.push({ x: bx, y: 0.9, z: bz, sx: 1.4, sy: 0.8, sz: 3.4, ry, color: BOAT_TONE });
+    batches.boxes.push({ x: bx, y: 1.32, z: bz, sx: 1.5, sy: 0.12, sz: 3.6, ry, color: BOAT_TRIM_TONE });
+    batches.cylinders.push({ x: bx, y: 3.2, z: bz, sx: 0.16, sy: 4.4, sz: 0.16, color: POST_TONE });
+    if (quality !== 'low') batches.boxes.push({ x: bx, y: 3.4, z: bz, sx: 0.08, sy: 3.2, sz: 1.6, ry, color: CREAM });
+  }
+  batches.spheres.push({ x: centerX(block), y: 0.9, z: block.maxZ - 2.2, sx: 0.5, sy: 0.6, sz: 0.5, color: BUOY_TONE });
+}
+
+// ---------------------------------------------------------------------------
+// Props: street trees, lamps, socket pads
+// ---------------------------------------------------------------------------
+
+function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batches: Batches): void {
+  const placed: [number, number][] = [];
+  const target = quality === 'low' ? 16 : 44;
+  const { bounds } = definition;
+  for (let attempt = 0; attempt < target * 8 && placed.length < target; attempt += 1) {
+    const x = bounds.minX + rng.next() * width(bounds);
+    const z = bounds.minZ + rng.next() * depth(bounds);
+    if (!isClearForProps(definition, x, z, true)) continue;
+    if (placed.some(([px, pz]) => Math.hypot(px - x, pz - z) < 5)) continue;
+    placed.push([x, z]);
+    const crown = 1.4 + rng.next() * 0.8;
+    const trunkHeight = 1.4 + rng.next() * 0.6;
+    batches.cylinders.push({ x, y: trunkHeight / 2, z, sx: 0.5, sy: trunkHeight, sz: 0.5, color: TRUNK_TONE });
+    batches.spheres.push({ x, y: trunkHeight + crown * 0.85, z, sx: crown, sy: crown * 1.1, sz: crown, color: rng.pick(LEAF_TONES) });
+  }
+  if (quality === 'low') return;
+  for (const road of definition.roads) {
+    const horizontal = width(road) >= depth(road);
+    if (!horizontal) continue;
+    for (let along = 9; along < width(road); along += 18) {
+      for (const side of [-1, 1] as const) {
+        const x = road.minX + along;
+        const z = centerZ(road) + side * (depth(road) / 2 + 0.8);
+        if (!isClearForProps(definition, x, z, false)) continue;
+        batches.cylinders.push({ x, y: 1.6, z, sx: 0.3, sy: 3.2, sz: 0.3, color: LAMP_POST_TONE });
+        batches.boxes.push({ x, y: 3.5, z, sx: 0.8, sy: 0.8, sz: 0.8, color: LAMP_GLOW_TONE });
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Water shimmer: a few foam bars that drift on the bay, moved by mutating one group (no React state)
+// ---------------------------------------------------------------------------
+
+const FOAM_BARS: readonly InstanceItem[] = [
+  { x: -30, y: -0.2, z: -95, sx: 18, sy: 0.5, sz: 1, rx: FLAT, color: FOAM_TONE },
+  { x: 20, y: -0.2, z: -110, sx: 26, sy: 0.5, sz: 1, rx: FLAT, color: FOAM_TONE },
+  { x: -80, y: -0.2, z: -130, sx: 22, sy: 0.5, sz: 1, rx: FLAT, color: FOAM_TONE },
+  { x: 60, y: -0.2, z: -85, sx: 16, sy: 0.5, sz: 1, rx: FLAT, color: FOAM_TONE },
+  { x: 100, y: -0.2, z: -20, sx: 20, sy: 0.5, sz: 1, rx: FLAT, color: FOAM_TONE },
+  { x: 120, y: -0.2, z: 40, sx: 24, sy: 0.5, sz: 1, rx: FLAT, color: FOAM_TONE },
+  { x: -10, y: -0.2, z: -160, sx: 30, sy: 0.5, sz: 1, rx: FLAT, color: FOAM_TONE },
+];
+
+function BayShimmer() {
+  const ref = useRef<Group>(null);
+  useFrame(({ clock }) => {
+    const group = ref.current;
+    if (!group) return;
+    const t = clock.getElapsedTime();
+    group.position.x = Math.sin(t * 0.35) * 2.5;
+    group.position.z = Math.cos(t * 0.27) * 1.5;
+  });
+  return (
+    <group ref={ref}>
+      <Instances geometry={UNIT_PLANE} items={FOAM_BARS} />
+    </group>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Scene
+// ---------------------------------------------------------------------------
+
+export function SanFranciscoScene({ definition, seed, quality }: CitySceneProps) {
+  const { blockers, sockets } = definition;
+
+  const layout = useMemo(() => {
+    const rng = createRng(hashSeed('san-francisco-cosmetic', seed));
+    const batches: Batches = { boxes: [], cylinders: [], spheres: [], flats: [], rings: [] };
+
+    buildBackground(definition, rng, quality, batches);
+    buildStreets(definition, quality, batches);
+
+    for (const blocker of blockers) {
+      if (blocker.id === 'bridge-approach') buildGoldenGate(blocker, quality, batches);
+      else if (blocker.id === 'cable-barn') buildCableBarn(blocker, quality, batches);
+      else if (blocker.id === 'wharf-sheds') buildWharfSheds(blocker, quality, batches);
+      else if (blocker.id === 'hill-terrace') buildHillTerrace(blocker, rng, quality, batches);
+      else if (blocker.id === 'bay-pier') buildBayPier(blocker, quality, batches);
+      else buildVictorianRow(blocker, rng, quality, batches);
+    }
+
+    buildProps(definition, rng, quality, batches);
+
+    for (const socket of sockets) {
+      const [x, , z] = socket.position;
+      batches.cylinders.push({ x, y: 0.03, z, sx: 5.2, sy: 0.06, sz: 5.2, color: SOCKET_DISC_TONE });
+      batches.rings.push({ x, y: 0.08, z, sx: 1, sy: 1, sz: 1, rx: FLAT, color: SOCKET_PAD_TONE });
+    }
+
+    for (const batch of Object.values(batches)) batch.sort(byTopDescending);
+    return batches;
+  }, [definition, seed, quality, blockers, sockets]);
+
+  return (
+    <group>
+      <Instances geometry={UNIT_PLANE} items={layout.flats} />
+      <Instances geometry={UNIT_BOX} items={layout.boxes} />
+      <Instances geometry={UNIT_CYLINDER} items={layout.cylinders} />
+      <Instances geometry={UNIT_SPHERE} items={layout.spheres} />
+      <Instances geometry={SOCKET_RING} items={layout.rings} />
+      <BayShimmer />
+    </group>
+  );
 }
