@@ -15,5 +15,6 @@
 | D11 | Same persistent explorer across cities | Continuity, identity choice and cheaper animation |
 | D12 | One integrator; exclusive worker ownership | Reduces branch conflicts and incompatible implementations |
 | D13 | Public links ready by 18:30 Paris target | Buffer before published 19:00 opt-in; confirm separate cutoff |
+| D14 | 2026-09-26, owner-approved: five cities (Paris, Giza, Rome, San Francisco, Berlin), twelve targets, six trials, and an arcade visual-polish pass | Supersedes D02 and the two-city scope lock in AGENTS.md; accepted cost is more art and QA surface per city. Impacted: `src/shared/contracts.ts` (CityId/TargetId/LevelId, target image metadata), `src/cities/index.ts`, `src/cities/rome|san-francisco|berlin/`, `src/content/`, `src/assets/targets/`, `src/ui/`. Movement, hint pricing, penalties and determinism unchanged. |
 
 When a decision changes, append date, owner, change and impacted contracts/paths. Do not silently fork the design across agent branches.

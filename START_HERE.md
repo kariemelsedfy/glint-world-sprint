@@ -2,7 +2,7 @@
 
 ## Decision in one minute
 
-Build a **browser-playable 3D treasure speedrun**, not a planet simulation. Ship **Paris + Giza, six collectibles, three short trials, a globe, a convincing travel transition, paid hints, and immediate retries**. Make the movement and discovery satisfying. Rome is a gated stretch goal.
+Build a **browser-playable 3D treasure speedrun**, not a planet simulation. Ship **Paris, Giza, Rome, San Francisco and Berlin, twelve collectibles, six short trials, a globe, a convincing travel transition, paid hints, and immediate retries** (owner decision D14). Make the movement and discovery satisfying.
 
 The player has one recognizable toy-like explorer. They deduce a destination from a clue, fly into its tiny city, use landmarks and a broad search area to find the object, then travel for the next. A hint buys information at a visible time/points cost. A retry teaches the route and improves the score.
 

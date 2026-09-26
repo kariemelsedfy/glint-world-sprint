@@ -8,7 +8,7 @@ Read [START_HERE.md](START_HERE.md), [docs/CONTRACTS.md](docs/CONTRACTS.md), and
 
 ## Scope lock
 
-P0: Paris + Giza; six targets / three trials; third-person elevated camera; grounded movement; globe entry/exit; clues; broad map regions; three paid hint tiers; deterministic target placement; timer; results; same-trial retry; local bests; audio/motion toggles; usable desktop and basic landscape touch controls.
+P0 (updated 2026-09-26 by owner decision D14, superseding the earlier Paris+Giza lock): Paris, Giza, Rome, San Francisco and Berlin; twelve targets / six trials; third-person elevated camera; grounded movement; globe entry/exit; clues; broad map regions; three paid hint tiers; deterministic target placement; timer; results; same-trial retry; local bests; audio/motion toggles; usable desktop and basic landscape touch controls.
 
 No real maps or Google Earth data; no multiplayer, auth, payments, chat, generated 3D at runtime, network-dependent gameplay, climbing, giant procedural worlds, physics engine, or global leaderboard. Optional work requires the gates in PROJECT_PLAN.md, not extra enthusiasm.
 
@@ -61,4 +61,4 @@ Record actual AI Studio and Devin use, prompt/output provenance, dependencies, a
 
 Compile against current main; exercise the changed behavior; add targeted tests for risky rules, not superficial component coverage; provide a screenshot or short recording for visual work; list known issues; update your status file; open a small PR with the template. A0 merges only after integration checks. Stop optional tests once their concrete risk is resolved.
 
-Escalate a blocker within 10 minutes with a fallback. Preserve a playable build. Cut Rome, dynamic AI, daily challenges, decorative complexity, and expensive effects before cutting retry, controls, the two-city loop, clue fairness, or publication.
+Escalate a blocker within 10 minutes with a fallback. Preserve a playable build. Cut the newer cities' decorative detail, dynamic AI, daily challenges, decorative complexity, and expensive effects before cutting retry, controls, the playable loop, clue fairness, or publication.
