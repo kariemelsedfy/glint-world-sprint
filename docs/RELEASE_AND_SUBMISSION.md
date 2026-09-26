@@ -71,18 +71,24 @@ Official HTML5 guidance currently limits archives to 1,000 extracted files, 500 
 
 A0 tags the chosen implementation commit (suggested `v0.1.0-hackathon`) after checks. Preserve the last known-good ZIP. If fixing a blocker after candidate upload, build from a new explicit commit, rerun affected checks, upload the new ZIP and update the record; follow the organizer's update policy. Never silently demo code that differs materially from submitted source.
 
-## Ready-to-use itch copy — edit to match shipped features
+## Ready-to-use itch copy — matches the shipped five-city build
 
-**GLINT — Know the landmark. Beat the clock.**
+**Title:** GLINT — World Sprint
 
-Read the clue, spin the globe and dive into colorful miniature cities. Find famous-object replicas, trade seconds for hints, and try again to beat your best time.
+**Tagline:** See the clue. Find the place. Beat the clock.
 
-Explore Paris and Giza across three quick treasure trials. No navigation line tells you where to go: recognize the landmarks and find your own route.
+**Description:**
 
-**Controls:** WASD / arrow keys to move, M for map, Escape to pause. On supported landscape touch devices, use the thumbstick and on-screen buttons. Approach a treasure to collect it.
+You are never told where to go. You are shown a picture of an object — a golden laurel wreath, a cable-car model, a blue scarab — and you have to work out which city it belongs to.
 
-Hints add time penalties. A paused run is practice. Best times are stored on this device where browser storage is available. Cities and collectibles are playful fictionalized miniatures.
+Spin a cartoon 3D globe, fly to the city you think is right, explore it on foot and grab the treasure before the clock beats you. Landing in the wrong city costs you five seconds. Hints cost ten, twenty or thirty-five. Your best time is yours to beat.
 
-Built solo with AI-assisted development using Devin and Google AI Studio. Source and technical notes: **replace with actual public repository link**.
+Five cities — Paris, Giza, Rome, San Francisco, Berlin. Twelve objects. Six expeditions. Every placement is deterministic, so every run is comparable.
 
-Delete any sentence describing an unshipped feature. This is prepared copy, not a claim the build already exists.
+**Controls:** WASD / arrow keys to move, MAP for the city map, Escape to pause, HINT to buy a clue, GLOBE to leave the city. On landscape touch devices, use the thumbstick and on-screen buttons. Walk into a treasure to collect it.
+
+Hints add time penalties. A paused run counts as practice and does not set a best. Best times are stored in your browser only — no account, no server, no tracking. Cities and collectibles are playful fictionalized miniatures.
+
+Built during the Tech: Europe AI Gaming Hack with AI-assisted development (Devin, Google AI Studio). Full source and technical documentation: https://github.com/kariemelsedfy/glint-world-sprint
+
+**Page settings:** Kind of project **HTML**, pricing **No payments / free**, viewport **1280×720**, **Click to launch in fullscreen** enabled, **Mobile friendly** left off unless you verify it on a phone, Genre **Adventure**, Tags `3d`, `browser`, `exploration`, `speedrun`, `geography`, `webgl`.
