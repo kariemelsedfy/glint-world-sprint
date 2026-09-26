@@ -1,54 +1,133 @@
 /**
- * Collectible glints and pickup burst. Owner: A1.
- * Renders uncollected objectives of the active city above their ground socket; glints
- * brighten as the explorer approaches and a short ring burst plays on collection.
+ * Collectible target cards and pickup burst. Owner: A1.
+ * Renders each uncollected objective of the active city as a chunky framed picture of the
+ * target standing on its ground socket. Cards yaw toward the camera, bob gently, and
+ * sparkle a little more as the explorer approaches; a short ring burst plays on collection.
  * Animation runs on refs; React state changes only when the collected set changes.
+ * Positions come from the store's deterministic placement and are never adjusted here.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
-import type { Group, Mesh, MeshBasicMaterial, MeshLambertMaterial } from 'three';
+import {
+  BoxGeometry,
+  CircleGeometry,
+  MeshBasicMaterial,
+  MeshLambertMaterial,
+  OctahedronGeometry,
+  PlaneGeometry,
+} from 'three';
+import type { Group, Mesh } from 'three';
 import type { CityId, ObjectiveInstance, TargetId } from '@/shared/contracts';
 import { playerTransform } from '@/shared/playerRef';
 import { PICKUP_PULSE_SECONDS } from '@/game/feedback';
+import { getTargetTexture } from '@/game/targetTextures';
 import { useRunStore } from '@/state/store';
 
 const HOVER_Y = 1.6;
 const NEAR_DISTANCE = 9;
 const BURST_SECONDS = PICKUP_PULSE_SECONDS + 0.15;
 
-function Glint({ objective }: { objective: ObjectiveInstance }) {
+/** Card dimensions in world units: picture, cream mat, ink outline, shallow depth. */
+const PICTURE = 2.3;
+const MAT = 2.75;
+const OUTLINE = 3;
+const DEPTH = 0.2;
+/** Cards lean back toward the elevated city camera (offset ~55° above the horizon). */
+const LEAN = -0.8;
+/** Card centre height when resting; the leaning frame's bottom edge sits on the stand. */
+const REST_Y = (OUTLINE / 2) * Math.cos(LEAN) + 0.34;
+const BOB = 0.1;
+
+const INK = '#211333';
+const CREAM = '#FFF5E9';
+const YELLOW = '#FFD963';
+
+const pictureGeometry = new PlaneGeometry(PICTURE, PICTURE);
+const matGeometry = new BoxGeometry(MAT, MAT, DEPTH);
+const outlineGeometry = new BoxGeometry(OUTLINE, OUTLINE, DEPTH * 0.7);
+const shadowGeometry = new CircleGeometry(1.35, 24);
+const sparkGeometry = new OctahedronGeometry(0.16, 0);
+const standGeometry = new BoxGeometry(1.2, 0.3, 0.9);
+
+const matMaterial = new MeshLambertMaterial({ color: CREAM });
+const inkMaterial = new MeshLambertMaterial({ color: INK });
+const shadowMaterial = new MeshBasicMaterial({ color: INK, transparent: true, opacity: 0.38, depthWrite: false });
+const sparkMaterial = new MeshBasicMaterial({ color: YELLOW });
+
+function TargetCard({ objective }: { objective: ObjectiveInstance }) {
   const group = useRef<Group>(null);
-  const gem = useRef<Mesh>(null);
-  const material = useRef<MeshLambertMaterial>(null);
+  const card = useRef<Group>(null);
+  const shadow = useRef<Mesh>(null);
+  const sparkA = useRef<Mesh>(null);
+  const sparkB = useRef<Mesh>(null);
   const [x, y, z] = objective.position;
 
+  const pictureMaterial = useMemo(
+    () => new MeshBasicMaterial({ map: getTargetTexture(objective.targetId), toneMapped: false }),
+    [objective.targetId],
+  );
+  useEffect(() => () => pictureMaterial.dispose(), [pictureMaterial]);
+
   useFrame((state) => {
-    if (!group.current) return;
+    if (!group.current || !card.current) return;
     const t = state.clock.elapsedTime;
     const dx = playerTransform.x - x;
     const dz = playerTransform.z - z;
     const near = 1 - Math.min(1, Math.hypot(dx, dz) / NEAR_DISTANCE);
     const excitement = near * near;
 
-    group.current.rotation.y = t * (1.4 + excitement * 4);
-    group.current.position.y = y + HOVER_Y + Math.sin(t * (2 + excitement * 3)) * (0.18 + excitement * 0.25);
-    if (gem.current) {
-      const scale = 1 + excitement * 0.35 + Math.sin(t * 9) * 0.04 * excitement;
-      gem.current.scale.setScalar(scale);
+    // Yaw-only billboard so the picture reads from any approach without tilting off its feet.
+    const cam = state.camera.position;
+    group.current.rotation.y = Math.atan2(cam.x - x, cam.z - z);
+
+    const bob = Math.sin(t * (1.6 + excitement * 2) + x * 0.37) * (BOB + excitement * 0.1);
+    card.current.position.y = REST_Y + bob;
+    card.current.rotation.z = Math.sin(t * 1.1 + z * 0.29) * 0.035 * (1 + excitement);
+    const scale = 1 + excitement * 0.18;
+    card.current.scale.setScalar(scale);
+
+    if (shadow.current) {
+      const lift = 1 - (bob + BOB) * 0.6;
+      shadow.current.scale.set(Math.max(0.5, lift) * scale, Math.max(0.5, lift) * scale * 0.7, 1);
     }
-    if (material.current) material.current.emissiveIntensity = 0.35 + excitement * 0.9;
+
+    const orbit = t * (2.2 + excitement * 3);
+    const radius = OUTLINE * 0.62 * scale;
+    if (sparkA.current) {
+      sparkA.current.position.set(Math.cos(orbit) * radius, REST_Y + bob + Math.sin(orbit * 1.7) * 0.9, 0.9);
+      sparkA.current.rotation.y = orbit * 2;
+      sparkA.current.scale.setScalar(0.6 + excitement * 1.2 + Math.sin(t * 7) * 0.15);
+    }
+    if (sparkB.current) {
+      sparkB.current.position.set(-Math.cos(orbit * 0.8) * radius, REST_Y + bob + Math.cos(orbit * 1.3) * 0.9, 0.9);
+      sparkB.current.rotation.y = -orbit * 2;
+      sparkB.current.scale.setScalar(0.5 + excitement * 1.1 + Math.cos(t * 6) * 0.15);
+    }
   });
 
   return (
-    <group ref={group} position={[x, y + HOVER_Y, z]}>
-      <mesh ref={gem}>
-        <octahedronGeometry args={[0.7, 0]} />
-        <meshLambertMaterial ref={material} color="#ffc857" emissive="#ffc857" emissiveIntensity={0.35} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -HOVER_Y + 0.04, 0]}>
-        <ringGeometry args={[0.9, 1.15, 24]} />
-        <meshBasicMaterial color="#ffc857" transparent opacity={0.45} />
-      </mesh>
+    <group ref={group} position={[x, y, z]}>
+      <mesh
+        ref={shadow}
+        geometry={shadowGeometry}
+        material={shadowMaterial}
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.03, 0]}
+      />
+      <mesh geometry={standGeometry} material={inkMaterial} position={[0, 0.15, -0.1]} />
+      <group ref={card} position={[0, REST_Y, 0]} rotation={[LEAN, 0, 0]}>
+        <mesh geometry={outlineGeometry} material={inkMaterial} />
+        <mesh geometry={matGeometry} material={matMaterial} position={[0, 0, 0.02]} />
+        <mesh geometry={pictureGeometry} material={pictureMaterial} position={[0, 0, DEPTH / 2 + 0.025]} />
+        <mesh
+          geometry={pictureGeometry}
+          material={pictureMaterial}
+          position={[0, 0, -DEPTH / 2 - 0.005]}
+          rotation={[0, Math.PI, 0]}
+        />
+      </group>
+      <mesh ref={sparkA} geometry={sparkGeometry} material={sparkMaterial} />
+      <mesh ref={sparkB} geometry={sparkGeometry} material={sparkMaterial} />
     </group>
   );
 }
@@ -133,7 +212,7 @@ export function Collectibles({ cityId }: { cityId: CityId }) {
       {run.objectives
         .filter((objective) => objective.cityId === cityId && !run.collected.includes(objective.targetId))
         .map((objective) => (
-          <Glint key={objective.targetId} objective={objective} />
+          <TargetCard key={objective.targetId} objective={objective} />
         ))}
       {bursts.map((burst) => (
         <Burst

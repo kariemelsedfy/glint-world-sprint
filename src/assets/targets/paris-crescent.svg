@@ -1,7 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 112" width="112" height="112" role="img" aria-label="Croissant">
-  <rect width="112" height="112" rx="14" fill="#6B3A2A"/>
-  <rect x="5" y="5" width="102" height="102" rx="10" fill="none" stroke="#211333" stroke-width="6"/>
-  <g fill="#F5C46B" stroke="#F5C46B" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M20 66c14-26 54-26 68 0-10-10-24-14-34-14s-24 4-34 14z M18 66h76v10H18z"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Golden croissant">
+  <rect width="256" height="256" rx="18" fill="#22C4EA"/>
+  <!-- plate -->
+  <ellipse cx="128" cy="168" rx="98" ry="30" fill="#FFF5E9" stroke="#211333" stroke-width="6"/>
+  <ellipse cx="128" cy="164" rx="80" ry="20" fill="none" stroke="#B6A1E8" stroke-width="3"/>
+  <!-- croissant body: crescent -->
+  <path d="M40 132 C44 96 84 74 128 74 C172 74 212 96 216 132 C208 122 194 116 184 122 C176 104 150 96 128 96 C106 96 80 104 72 122 C62 116 48 122 40 132 Z" fill="#E9A23B" stroke="#211333" stroke-width="6" stroke-linejoin="round"/>
+  <!-- segments -->
+  <path d="M40 132 C50 148 62 156 76 156 C80 136 74 124 72 122 Z" fill="#F3B857" stroke="#211333" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M76 156 C92 160 108 162 128 162 C130 140 124 112 128 96 C106 96 84 104 72 122 C76 124 82 136 76 156 Z" fill="#F7C46A" stroke="#211333" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M128 162 C148 162 164 160 180 156 C174 136 180 124 184 122 C172 104 150 96 128 96 C124 112 130 140 128 162 Z" fill="#F7C46A" stroke="#211333" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M216 132 C206 148 194 156 180 156 C176 136 182 124 184 122 Z" fill="#F3B857" stroke="#211333" stroke-width="5" stroke-linejoin="round"/>
+  <!-- glaze highlights -->
+  <path d="M96 112 q14 -8 30 -4 M150 108 q12 2 22 12" fill="none" stroke="#FFF5E9" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
+  <!-- flakes -->
+  <path d="M60 178 l8 4 M190 176 l8 -4 M120 182 l6 3" stroke="#E9A23B" stroke-width="4" stroke-linecap="round"/>
 </svg>
