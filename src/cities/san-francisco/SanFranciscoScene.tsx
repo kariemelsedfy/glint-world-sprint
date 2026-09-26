@@ -19,6 +19,7 @@ import {
   CylinderGeometry,
   Group,
   InstancedMesh,
+  MeshBasicMaterial,
   MeshLambertMaterial,
   Object3D,
   PlaneGeometry,
@@ -42,6 +43,7 @@ const UNIT_SPHERE = new SphereGeometry(1, 7, 5);
 const UNIT_PLANE = new PlaneGeometry(1, 1);
 const SOCKET_RING = new RingGeometry(1.7, 2.3, 20);
 const WHITE = new MeshLambertMaterial({ color: '#ffffff' });
+const HAZE_MATERIAL = new MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.42, depthWrite: false });
 
 // Arcade palette
 const INK = '#211333';
@@ -74,9 +76,9 @@ const CABLE_TONE = '#3a2648';
 const CONCRETE_TONE = '#d8d0cc';
 const DECK_TONE = '#6d6382';
 
-const PASTELS = ['#f8c8dc', '#b6a1e8', '#a8e4f0', '#ffe7a8', '#c9f0c2', '#fff5e9', '#ffc9a3'] as const;
-const TRIMS = ['#ffffff', '#fff5e9', '#7146c5', '#211333'] as const;
-const ROOF_TONES = ['#4c3a6b', '#5a4680', '#3d2f57'] as const;
+const PASTELS = ['#f8c8dc', '#b6a1e8', '#a8e4f0', '#ffe7a8', '#c9f0c2', '#fff5e9', '#ffc9a3', '#f7a8c9', '#9fd6c8', '#e5c8ff', '#fdd9a0', '#bfe0ff'] as const;
+const TRIMS = ['#ffffff', '#fff5e9', '#7146c5', '#211333', HOT_PINK, CYAN, YELLOW] as const;
+const ROOF_TONES = ['#4c3a6b', '#5a4680', '#3d2f57', '#7146c5', '#8b3a5c', '#2f6f7a'] as const;
 const WINDOW_TONE = '#2a2340';
 const GLASS_TONE = '#7fd5ee';
 const STEP_TONE = '#d9d0cf';
@@ -130,7 +132,15 @@ interface InstanceItem {
 const scratchObject = new Object3D();
 const scratchColor = new Color();
 
-function Instances({ geometry, items }: { readonly geometry: BufferGeometry; readonly items: readonly InstanceItem[] }) {
+function Instances({
+  geometry,
+  items,
+  material = WHITE,
+}: {
+  readonly geometry: BufferGeometry;
+  readonly items: readonly InstanceItem[];
+  readonly material?: MeshLambertMaterial | MeshBasicMaterial;
+}) {
   const ref = useRef<InstancedMesh>(null);
 
   useLayoutEffect(() => {
@@ -151,7 +161,7 @@ function Instances({ geometry, items }: { readonly geometry: BufferGeometry; rea
   }, [items]);
 
   if (items.length === 0) return null;
-  return <instancedMesh key={items.length} ref={ref} args={[geometry, WHITE, items.length]} frustumCulled={false} />;
+  return <instancedMesh key={items.length} ref={ref} args={[geometry, material, items.length]} frustumCulled={false} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,6 +235,7 @@ interface Batches {
   readonly spheres: InstanceItem[];
   readonly flats: InstanceItem[];
   readonly rings: InstanceItem[];
+  readonly haze: InstanceItem[];
 }
 
 function isClearForProps(definition: CityDefinition, x: number, z: number, keepOffRoads: boolean): boolean {
@@ -314,13 +325,27 @@ function buildStreets(definition: CityDefinition, quality: Quality, batches: Bat
   batches.flats.push({ x: centerX(mainStreet), y: 0.035, z: centerZ(mainStreet), sx: 0.18, sy: depth(mainStreet), sz: 1, rx: FLAT, color: INK });
   if (quality === 'low') return;
   const wireY = 6.2;
-  for (const side of [-1, 1] as const) {
-    const x = centerX(mainStreet) + side * (width(mainStreet) / 2 + 0.7);
-    for (let z = mainStreet.minZ + 6; z < mainStreet.maxZ; z += 16) {
-      if (!isClearForProps(definition, x, z, false)) continue;
+  const poleX = width(mainStreet) / 2 + 0.7;
+  for (let z = mainStreet.minZ + 4; z < mainStreet.maxZ; z += 10) {
+    const clear = [-1, 1].every((side) => {
+      const x = centerX(mainStreet) + side * poleX;
+      if (definition.blockers.some((b) => contains(grow(b, 1), x, z))) return false;
+      return !roads.some((road) => road !== mainStreet && contains(grow(road, 1.5), x, z));
+    });
+    if (!clear) continue;
+    for (const side of [-1, 1] as const) {
+      const x = centerX(mainStreet) + side * poleX;
       batches.cylinders.push({ x, y: wireY / 2, z, sx: 0.35, sy: wireY, sz: 0.35, color: POLE_TONE });
-      batches.boxes.push({ x: x - side * 1.8, y: wireY - 0.15, z, sx: 3.6, sy: 0.16, sz: 0.16, color: POLE_TONE });
+      batches.boxes.push({ x, y: wireY + 0.3, z, sx: 0.6, sy: 0.6, sz: 0.6, color: CREAM });
+      batches.boxes.push({ x, y: 1.6, z, sx: 0.45, sy: 0.5, sz: 0.45, color: side < 0 ? HOT_PINK : CYAN });
     }
+    // Span wire between the pair, with short hangers dropping to the two running wires.
+    batches.boxes.push({ x: centerX(mainStreet), y: wireY + 0.4, z, sx: poleX * 2, sy: 0.07, sz: 0.07, color: WIRE_TONE });
+    for (const side of [-1, 1] as const) {
+      batches.boxes.push({ x: centerX(mainStreet) + side * 1.6, y: wireY + 0.2, z, sx: 0.06, sy: 0.4, sz: 0.06, color: WIRE_TONE });
+    }
+  }
+  for (const side of [-1, 1] as const) {
     batches.boxes.push({ x: centerX(mainStreet) + side * 1.6, y: wireY, z: centerZ(mainStreet), sx: 0.08, sy: 0.08, sz: depth(mainStreet), color: WIRE_TONE });
   }
 }
@@ -399,17 +424,27 @@ function buildBackground(definition: CityDefinition, rng: Rng, quality: Quality,
     batches.boxes.push({ x: bounds.minX - 22, y: 4, z, sx: 44, sy: 8.5, sz: 3, color: DECK_TONE });
   }
 
-  // Restrained local haze: opaque bands stepping from lavender toward the sky colour, so the bay,
-  // the strait and the far bridge anchorage fade out without touching the scene's fog settings.
+  // Layered local haze (translucent, depthWrite off): far bands at the map edges, plus fog banks
+  // rolling through the strait under and around the bridge so the towers punch out of it. No fog
+  // setting is touched; this is just a handful of instanced translucent slabs.
+  const straitZ = (STRAIT_MIN_Z + STRAIT_MAX_Z) / 2;
   HAZE_BANDS.forEach((tone, index) => {
-    const y = 3 + index * 4;
-    batches.boxes.push({ x: 0, y, z: -FAR + 20 + index * 6, sx: FAR * 2.2, sy: 8, sz: 1, color: tone });
-    batches.boxes.push({ x: FAR - 20 - index * 6, y, z: 0, sx: 1, sy: 8, sz: FAR * 2.2, color: tone });
-    batches.boxes.push({ x: -FAR + 25 + index * 6, y, z: centerZ({ minX: 0, maxX: 0, minZ: STRAIT_MIN_Z, maxZ: STRAIT_MAX_Z }), sx: 1, sy: 8, sz: 70, color: tone });
+    const y = 4 + index * 5;
+    batches.haze.push({ x: 0, y, z: -FAR + 30 + index * 10, sx: FAR * 2.2, sy: 10, sz: 1, color: tone });
+    batches.haze.push({ x: FAR - 30 - index * 10, y, z: 0, sx: 1, sy: 10, sz: FAR * 2.2, color: tone });
+    batches.haze.push({ x: -FAR + 40 + index * 12, y, z: straitZ, sx: 1, sy: 10, sz: 90, color: tone });
   });
-  // Low water mist drifting through the strait under the bridge deck.
-  for (let x = bounds.minX - 6; x > -FAR + 40; x -= 22) {
-    batches.boxes.push({ x, y: 1.2, z: STRAIT_MIN_Z + 6 + ((x * 7) % 20 + 20) % 20, sx: 16, sy: 1.6, sz: 5, color: HAZE_TONE });
+  const bankCount = quality === 'low' ? 4 : 9;
+  for (let index = 0; index < bankCount; index += 1) {
+    const t = index / bankCount;
+    const x = bounds.minX - 8 - t * 120;
+    const drift = ((index * 37) % 23) - 11;
+    batches.haze.push({ x, y: 1.6 + (index % 3) * 1.1, z: straitZ + drift, sx: 26 + (index % 4) * 6, sy: 2.6 + (index % 2) * 1.4, sz: 12 + (index % 3) * 4, color: index % 2 ? HAZE_TONE : CREAM });
+  }
+  if (quality !== 'low') {
+    for (const x of [-96, -112, -126]) {
+      batches.haze.push({ x, y: 12, z: straitZ, sx: 14, sy: 9, sz: 40, color: HAZE_BANDS[2] });
+    }
   }
 }
 
@@ -588,8 +623,19 @@ function buildVictorianRow(block: Blocker, rng: Rng, quality: Quality, batches: 
       if (index === 0) batches.boxes.push({ x: body.minX - 0.04, y: y + 0.8, z: centerZ(body), sx: 0.08, sy: 1.4, sz: 1.0, color: GLASS_TONE });
       if (index === count - 1) batches.boxes.push({ x: body.maxX + 0.04, y: y + 0.8, z: centerZ(body), sx: 0.08, sy: 1.4, sz: 1.0, color: GLASS_TONE });
     }
-    // Trim band between storeys.
+    // Trim band between storeys, corner pilasters, cornice brackets and a chimney.
     batches.boxes.push({ x: centerX(body), y: 2.0, z: body.maxZ + 0.04, sx: width(body), sy: 0.25, sz: 0.1, color: trim });
+    for (const cx of [body.minX + 0.15, body.maxX - 0.15]) {
+      batches.boxes.push({ x: cx, y: height / 2, z: body.maxZ + 0.06, sx: 0.3, sy: height, sz: 0.12, color: trim });
+    }
+    for (let bx = body.minX + 0.6; bx < body.maxX - 0.3; bx += 1.1) {
+      batches.boxes.push({ x: bx, y: height - 0.3, z: body.maxZ + 0.3, sx: 0.25, sy: 0.5, sz: 0.5, color: trim });
+    }
+    if (rng.next() < 0.6) {
+      batches.boxes.push({ x: body.minX + 0.9, y: height + 1.6, z: body.minZ + 1.2, sx: 0.8, sy: 2.4, sz: 0.8, color: rng.next() < 0.5 ? BRICK_TONE : trim });
+    }
+    // Second-colour band on the bay window sill for the "painted lady" look.
+    batches.boxes.push({ x: bayX, y: 1.35, z: body.maxZ + 0.6, sx: bayWidth + 0.3, sy: 0.3, sz: 1.2, color: rng.pick(TRIMS) });
   }
 }
 
@@ -678,8 +724,24 @@ function buildWharfSheds(block: Blocker, quality: Quality, batches: Batches): vo
       batches.boxes.push({ x, y: height + 0.4 + rise * 0.55, z: shed.maxZ + 0.4, sx: 1.2, sy: 1.0, sz: 0.2, color: CREAM });
     }
   });
-  // Crab pots and barrels in the alley between the sheds.
+  // Pier sign on the street face, bollards along the plank edge, crate stacks, a couple of gulls.
+  batches.cylinders.push({ x: centerX(block), y: 3.6, z: block.maxZ + 1.2, sx: 0.3, sy: 7.2, sz: 0.3, color: POST_TONE });
+  batches.boxes.push({ x: centerX(block), y: 7.6, z: block.maxZ + 1.2, sx: 7, sy: 2.2, sz: 0.4, color: CREAM });
+  batches.boxes.push({ x: centerX(block), y: 7.6, z: block.maxZ + 1.45, sx: 5.6, sy: 1.0, sz: 0.1, color: HOT_PINK });
+  batches.boxes.push({ x: centerX(block), y: 8.9, z: block.maxZ + 1.2, sx: 7.4, sy: 0.3, sz: 0.6, color: INK });
   if (quality === 'low') return;
+  for (let x = block.minX + 1; x <= block.maxX - 1; x += 3) {
+    batches.cylinders.push({ x, y: 0.45, z: block.maxZ - 0.5, sx: 0.5, sy: 0.9, sz: 0.5, color: INK });
+    batches.cylinders.push({ x, y: 0.45, z: block.minZ + 0.5, sx: 0.5, sy: 0.9, sz: 0.5, color: INK });
+  }
+  for (const [cx, cz, h] of [[block.minX + 1.2, centerZ(block) + 1.6, 1.4], [block.minX + 2.6, centerZ(block) + 1.6, 0.9], [block.maxX - 1.5, centerZ(block) - 1.6, 1.2]] as const) {
+    batches.boxes.push({ x: cx, y: h / 2, z: cz, sx: 1.2, sy: h, sz: 1.2, color: PLANK_TONE });
+  }
+  for (const [gx, gz] of [[block.minX + 4, block.minZ + 1], [block.maxX - 5, block.maxZ - 2]] as const) {
+    batches.spheres.push({ x: gx, y: 6.4, z: gz, sx: 0.5, sy: 0.4, sz: 0.7, color: CREAM });
+    batches.boxes.push({ x: gx, y: 6.4, z: gz, sx: 1.6, sy: 0.08, sz: 0.3, color: CREAM });
+  }
+  // Crab pots and barrels in the alley between the sheds.
   for (let x = block.minX + 2; x < block.maxX - 1; x += 3.5) {
     batches.cylinders.push({ x, y: 0.6, z: centerZ(block), sx: 1.1, sy: 1.2, sz: 1.1, color: x % 7 < 3.5 ? POST_TONE : YELLOW });
   }
@@ -732,6 +794,21 @@ function buildBayPier(block: Blocker, quality: Quality, batches: Batches): void 
     if (quality !== 'low') batches.boxes.push({ x: bx, y: 3.4, z: bz, sx: 0.08, sy: 3.2, sz: 1.6, ry, color: CREAM });
   }
   batches.spheres.push({ x: centerX(block), y: 0.9, z: block.maxZ - 2.2, sx: 0.5, sy: 0.6, sz: 0.5, color: BUOY_TONE });
+  batches.spheres.push({ x: block.minX + 3, y: 0.9, z: block.maxZ - 3, sx: 0.5, sy: 0.6, sz: 0.5, color: YELLOW });
+  // Fishing boat with a wheelhouse, lifebuoy rings on the pier posts, a lamp at the pier head.
+  const fx = block.maxX - 9;
+  const fz = block.minZ + 3.2;
+  batches.boxes.push({ x: fx, y: 0.95, z: fz, sx: 2.0, sy: 0.9, sz: 4.6, ry: 0.15, color: CYAN });
+  batches.boxes.push({ x: fx, y: 1.42, z: fz, sx: 2.1, sy: 0.14, sz: 4.8, ry: 0.15, color: CREAM });
+  batches.boxes.push({ x: fx, y: 2.1, z: fz + 1.0, sx: 1.4, sy: 1.2, sz: 1.4, ry: 0.15, color: CREAM });
+  batches.boxes.push({ x: fx, y: 2.8, z: fz + 1.0, sx: 1.6, sy: 0.2, sz: 1.6, ry: 0.15, color: HOT_PINK });
+  if (quality !== 'low') {
+    for (const x of [pier.minX + 5, pier.minX + 11]) {
+      batches.rings.push({ x, y: 1.6, z: pier.maxZ + 0.05, sx: 0.28, sy: 0.28, sz: 0.28, rx: 0, color: ORANGE });
+    }
+    batches.cylinders.push({ x: pier.maxX - 0.8, y: 2.3, z: centerZ(pier), sx: 0.2, sy: 3.4, sz: 0.2, color: LAMP_POST_TONE });
+    batches.spheres.push({ x: pier.maxX - 0.8, y: 4.2, z: centerZ(pier), sx: 0.5, sy: 0.5, sz: 0.5, color: LAMP_GLOW_TONE });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -786,19 +863,50 @@ const FOAM_BARS: readonly InstanceItem[] = [
   { x: -84, y: -0.2, z: -32, sx: 10, sy: 0.5, sz: 1, rx: FLAT, color: FOAM_TONE },
 ];
 
+const RIPPLE_BARS: readonly InstanceItem[] = Array.from({ length: 28 }, (_, index) => {
+  const row = Math.floor(index / 7);
+  const col = index % 7;
+  const inStrait = row >= 2;
+  return {
+    x: inStrait ? -80 - col * 12 - (row % 2) * 6 : -110 + col * 38 + (row % 2) * 12,
+    y: -0.22,
+    z: inStrait ? -58 + (row - 2) * 16 + (col % 3) * 4 : -90 - row * 30 - (col % 2) * 9,
+    sx: 6 + (col % 3) * 3,
+    sy: 0.35,
+    sz: 1,
+    rx: FLAT,
+    color: col % 2 ? WATER_DEEP_TONE : FOAM_TONE,
+  };
+});
+
+// Two instanced layers drift on different phases; the only per-frame work is two group transforms.
 function BayShimmer() {
-  const ref = useRef<Group>(null);
+  const foam = useRef<Group>(null);
+  const ripple = useRef<Group>(null);
   useFrame(({ clock }) => {
-    const group = ref.current;
-    if (!group) return;
     const t = clock.getElapsedTime();
-    group.position.x = Math.sin(t * 0.35) * 2.5;
-    group.position.z = Math.cos(t * 0.27) * 1.5;
+    const foamGroup = foam.current;
+    if (foamGroup) {
+      foamGroup.position.x = Math.sin(t * 0.35) * 2.5;
+      foamGroup.position.z = Math.cos(t * 0.27) * 1.5;
+      foamGroup.scale.x = 1 + Math.sin(t * 0.8) * 0.06;
+    }
+    const rippleGroup = ripple.current;
+    if (rippleGroup) {
+      rippleGroup.position.x = Math.cos(t * 0.5 + 1.3) * 1.8;
+      rippleGroup.position.z = Math.sin(t * 0.41) * 2.2;
+      rippleGroup.position.y = Math.sin(t * 1.1) * 0.03;
+    }
   });
   return (
-    <group ref={ref}>
-      <Instances geometry={UNIT_PLANE} items={FOAM_BARS} />
-    </group>
+    <>
+      <group ref={foam}>
+        <Instances geometry={UNIT_PLANE} items={FOAM_BARS} />
+      </group>
+      <group ref={ripple}>
+        <Instances geometry={UNIT_PLANE} items={RIPPLE_BARS} />
+      </group>
+    </>
   );
 }
 
@@ -811,7 +919,7 @@ export function SanFranciscoScene({ definition, seed, quality }: CitySceneProps)
 
   const layout = useMemo(() => {
     const rng = createRng(hashSeed('san-francisco-cosmetic', seed));
-    const batches: Batches = { boxes: [], cylinders: [], spheres: [], flats: [], rings: [] };
+    const batches: Batches = { boxes: [], cylinders: [], spheres: [], flats: [], rings: [], haze: [] };
 
     buildBackground(definition, rng, quality, batches);
     buildStreets(definition, quality, batches);
@@ -844,6 +952,7 @@ export function SanFranciscoScene({ definition, seed, quality }: CitySceneProps)
       <Instances geometry={UNIT_CYLINDER} items={layout.cylinders} />
       <Instances geometry={UNIT_SPHERE} items={layout.spheres} />
       <Instances geometry={SOCKET_RING} items={layout.rings} />
+      <Instances geometry={UNIT_BOX} items={layout.haze} material={HAZE_MATERIAL} />
       <BayShimmer />
     </group>
   );
