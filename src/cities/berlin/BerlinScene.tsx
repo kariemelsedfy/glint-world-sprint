@@ -90,6 +90,16 @@ const LAMP_GLOW_TONE = '#ffd27a';
 const BIKE_TONES = [INK, PURPLE, PINK, CYAN, '#3d3d3d'] as const;
 const BOLLARD_TONE = '#8a8e96';
 const FAR_TONES = ['#b6a1e8', '#a993dc', '#c2b1ee', '#9e88d0'] as const;
+const LAWN_TONE = '#a9cf82';
+const LANE_MARK_TONE = '#e9e4d6';
+
+/** Lawns are purely cosmetic ground colour: parks west of the gate and the riverside strip by the wall. */
+const LAWNS: readonly RectXZ[] = [
+  { minX: -72, maxX: -50, minZ: -72, maxZ: -4 },
+  { minX: -72, maxX: -64, minZ: 12, maxZ: 72 },
+  { minX: 8, maxX: 62, minZ: 61, maxZ: 72 },
+  { minX: 40, maxX: 72, minZ: -72, maxZ: -44 },
+];
 
 const SOCKET_CLEAR_RADIUS = 5;
 const FLAT = -Math.PI / 2;
@@ -207,6 +217,7 @@ function buildStreets(definition: CityDefinition, quality: Quality, batches: Bat
   const { bounds, roads } = definition;
   batches.flats.push(flatItem(grow(bounds, 60), -0.01, FAR_GROUND_TONE));
   batches.flats.push(flatItem(bounds, 0, GROUND_TONE));
+  for (const lawn of LAWNS) batches.flats.push(flatItem(lawn, 0.007, LAWN_TONE));
 
   for (const road of roads) {
     for (const strip of sidewalkStrips(road, 3)) batches.flats.push(flatItem(strip, 0.016, SIDEWALK_TONE));
@@ -223,6 +234,16 @@ function buildStreets(definition: CityDefinition, quality: Quality, batches: Bat
           ? { minX: road.minX, maxX: road.maxX, minZ: centerZ(road) + offset - 0.08, maxZ: centerZ(road) + offset + 0.08 }
           : { minX: centerX(road) + offset - 0.08, maxX: centerX(road) + offset + 0.08, minZ: road.minZ, maxZ: road.maxZ };
         batches.flats.push(flatItem(rail, 0.03, RAIL_TONE));
+      }
+    }
+    // Lane markings: a broken line either side of the tram reservation
+    const length = horizontal ? width(road) : depth(road);
+    for (const offset of [-5.2, 5.2]) {
+      for (let along = 2; along < length - 3; along += 6) {
+        const dash: RectXZ = horizontal
+          ? { minX: road.minX + along, maxX: road.minX + along + 3, minZ: centerZ(road) + offset - 0.12, maxZ: centerZ(road) + offset + 0.12 }
+          : { minX: centerX(road) + offset - 0.12, maxX: centerX(road) + offset + 0.12, minZ: road.minZ + along, maxZ: road.minZ + along + 3 };
+        batches.flats.push(flatItem(dash, 0.026, LANE_MARK_TONE));
       }
     }
     if (quality === 'low') continue;
@@ -254,9 +275,9 @@ function buildGroundShadows(blockers: readonly Blocker[], batches: Batches): voi
 // Landmarks
 // ---------------------------------------------------------------------------
 
-const GATE_COLUMN_TOP = 14.4;
-const GATE_ENTABLATURE = 2.4;
-const GATE_ATTIC = 3.2;
+const GATE_COLUMN_TOP = 10.5;
+const GATE_ENTABLATURE = 1.9;
+const GATE_ATTIC = 2.4;
 
 function buildGate(landmark: Landmark, quality: Quality, batches: Batches): void {
   const { footprint } = landmark;
@@ -374,7 +395,7 @@ function TowerMeshes({ landmark }: { readonly landmark: Landmark }) {
         geometry={TOWER_SHAFT}
         material={CONCRETE_MATERIAL}
         position={[cx, TOWER_SHAFT_TOP / 2, cz]}
-        scale={[6.4, TOWER_SHAFT_TOP, 6.4]}
+        scale={[4.8, TOWER_SHAFT_TOP, 4.8]}
       />
       <mesh geometry={TOWER_SPHERE} material={SILVER_MATERIAL} position={[cx, TOWER_SPHERE_Y, cz]} scale={TOWER_SPHERE_R} />
     </group>
@@ -389,7 +410,7 @@ function buildPaintedWall(landmark: Landmark, rng: Rng, quality: Quality, batche
   const { boxes, cylinders } = batches;
   batches.flats.push(flatItem(grow(footprint, 9), 0.013, PLAZA_TONE));
   boxes.push(boxItem(footprint, 0, WALL_HEIGHT, WALL_TONE));
-  boxes.push({ x: centerX(footprint), y: WALL_HEIGHT + 0.2, z: centerZ(footprint), sx: width(footprint) + 0.4, sy: 0.4, sz: depth(footprint) + 0.4, color: INK });
+  boxes.push({ x: centerX(footprint), y: WALL_HEIGHT + 0.2, z: centerZ(footprint), sx: width(footprint) + 0.4, sy: 0.4, sz: depth(footprint) + 0.4, color: '#a9a49a' });
   for (const pillarX of [footprint.minX + 0.6, footprint.maxX - 0.6]) {
     boxes.push({ x: pillarX, y: WALL_HEIGHT / 2 + 0.4, z: centerZ(footprint), sx: 1.4, sy: WALL_HEIGHT + 0.8, sz: depth(footprint) + 0.6, color: INK });
   }
@@ -559,7 +580,8 @@ function buildKiosks(blocker: Blocker, rng: Rng, quality: Quality, batches: Batc
     const bodyTone = index === 1 ? CREAM : '#f7efe2';
     const height = 3.4 + index * 0.3;
     boxes.push(boxItem(rect, 0.3, height, bodyTone));
-    boxes.push(boxItem(grow(rect, 0.25), 0.3 + height, 0.45, INK));
+    boxes.push(boxItem(grow(rect, 0.25), 0.3 + height, 0.45, accent));
+    boxes.push(boxItem(grow(rect, 0.25), 0.3 + height - 0.18, 0.18, INK));
     // Serving window + counter on the +Z face
     boxes.push({ x: centerX(rect), y: 0.3 + 2.0, z: rect.maxZ + 0.04, sx: width(rect) - 1.4, sy: 1.5, sz: 0.1, color: WINDOW_TONE });
     boxes.push({ x: centerX(rect), y: 0.3 + 1.15, z: rect.maxZ + 0.35, sx: width(rect) - 1.0, sy: 0.25, sz: 0.8, color: INK });
@@ -622,27 +644,27 @@ function pushTree(x: number, z: number, rng: Rng, batches: Batches): void {
 /** A parked bike: two wheel discs, a frame bar and a saddle, lying along X or along Z. */
 function pushBike(x: number, z: number, alongX: boolean, rng: Rng, batches: Batches): void {
   const tone = rng.pick(BIKE_TONES);
-  for (const along of [-0.55, 0.55]) {
+  for (const along of [-0.62, 0.62]) {
     batches.cylinders.push({
       x: alongX ? x + along : x,
-      y: 0.36,
+      y: 0.48,
       z: alongX ? z : z + along,
-      sx: 0.7,
-      sy: 0.08,
-      sz: 0.7,
+      sx: 0.95,
+      sy: 0.1,
+      sz: 0.95,
       rx: alongX ? Math.PI / 2 : 0,
       rz: alongX ? 0 : Math.PI / 2,
       color: INK,
     });
   }
-  batches.boxes.push({ x, y: 0.62, z, sx: alongX ? 1.1 : 0.1, sy: 0.12, sz: alongX ? 0.1 : 1.1, color: tone });
+  batches.boxes.push({ x, y: 0.7, z, sx: alongX ? 1.2 : 0.16, sy: 0.16, sz: alongX ? 0.16 : 1.2, color: tone });
   batches.boxes.push({
     x: alongX ? x - 0.2 : x,
-    y: 0.85,
+    y: 0.95,
     z: alongX ? z : z - 0.2,
-    sx: alongX ? 0.3 : 0.5,
-    sy: 0.12,
-    sz: alongX ? 0.5 : 0.3,
+    sx: alongX ? 0.36 : 0.6,
+    sy: 0.14,
+    sz: alongX ? 0.6 : 0.36,
     color: INK,
   });
 }
