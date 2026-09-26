@@ -60,7 +60,10 @@ const CURB_WHITE = CREAM;
 const WATER_TONE = '#35b9dd';
 const WATER_DEEP_TONE = '#2593b8';
 const FOAM_TONE = '#c8f2fb';
-const HAZE_TONE = '#d9cdf2';
+const HAZE_TONE = '#dcd3f0';
+const HAZE_BANDS = ['#cbbfe8', '#c9cdef', '#c3dcf3', '#bfe4f5'] as const;
+const STRAIT_MIN_Z = -62;
+const STRAIT_MAX_Z = -28;
 const HILL_TONES = ['#c7b4ea', '#b6a1e8', '#a48fdc'] as const;
 const HILL_HOUSE_TONES = ['#f8d7e4', '#fff5e9', '#d7e9fb', '#ffe9b0'] as const;
 const SHADOW_TONE = '#b9a8d6';
@@ -282,6 +285,26 @@ function buildStreets(definition: CityDefinition, quality: Quality, batches: Bat
     }
   }
 
+  // Zebra crossings where roads meet.
+  if (quality !== 'low') {
+    for (const a of roads) {
+      if (width(a) < depth(a)) continue;
+      for (const b of roads) {
+        if (width(b) >= depth(b)) continue;
+        for (const edgeZ of [a.minZ, a.maxZ]) {
+          for (let x = b.minX + 0.6; x < b.maxX - 0.4; x += 1.2) {
+            batches.flats.push({ x: x + 0.3, y: 0.032, z: edgeZ + (edgeZ === a.minZ ? 1.2 : -1.2), sx: 0.6, sy: 1.8, sz: 1, rx: FLAT, color: CREAM });
+          }
+        }
+        for (const edgeX of [b.minX, b.maxX]) {
+          for (let z = a.minZ + 0.6; z < a.maxZ - 0.4; z += 1.2) {
+            batches.flats.push({ x: edgeX + (edgeX === b.minX ? 1.2 : -1.2), y: 0.032, z: z + 0.3, sx: 1.8, sy: 0.6, sz: 1, rx: FLAT, color: CREAM });
+          }
+        }
+      }
+    }
+  }
+
   // Cable-car tracks + overhead trolley wires along the main N-S street (the one through spawn).
   const mainStreet = roads.find((road) => depth(road) > width(road) && road.minX <= 0 && road.maxX >= 0);
   if (!mainStreet) return;
@@ -343,22 +366,27 @@ function buildBackground(definition: CityDefinition, rng: Rng, quality: Quality,
   });
 
   // Stepped residential hills west and south of the playable blocks (background only, outside bounds).
+  // The strait (STRAIT_MIN_Z..STRAIT_MAX_Z) stays open water so the Golden Gate can cross it westward.
   const tiers = [
-    { rect: { minX: -FAR, maxX: bounds.minX - 0.5, minZ: -FAR * 0.5, maxZ: FAR }, h: 3 },
-    { rect: { minX: -FAR, maxX: bounds.minX - 14, minZ: -FAR * 0.5 + 10, maxZ: FAR }, h: 7 },
-    { rect: { minX: -FAR, maxX: bounds.minX - 30, minZ: -FAR * 0.5 + 20, maxZ: FAR }, h: 12 },
+    { rect: { minX: -FAR, maxX: bounds.minX - 0.5, minZ: STRAIT_MAX_Z, maxZ: FAR }, h: 3 },
+    { rect: { minX: -FAR, maxX: bounds.minX - 14, minZ: STRAIT_MAX_Z + 8, maxZ: FAR }, h: 7 },
+    { rect: { minX: -FAR, maxX: bounds.minX - 30, minZ: STRAIT_MAX_Z + 18, maxZ: FAR }, h: 12 },
+    { rect: { minX: -FAR, maxX: bounds.minX - 0.5, minZ: -FAR, maxZ: STRAIT_MIN_Z }, h: 4 },
+    { rect: { minX: -FAR, maxX: bounds.minX - 24, minZ: -FAR, maxZ: STRAIT_MIN_Z - 6 }, h: 9 },
+    { rect: { minX: -FAR, maxX: bounds.minX - 50, minZ: -FAR, maxZ: STRAIT_MIN_Z - 14 }, h: 15 },
     { rect: { minX: bounds.minX - 0.5, maxX: bounds.maxX + 0.5, minZ: bounds.maxZ + 0.5, maxZ: FAR }, h: 3 },
     { rect: { minX: bounds.minX - 0.5, maxX: bounds.maxX + 0.5, minZ: bounds.maxZ + 14, maxZ: FAR }, h: 7 },
     { rect: { minX: bounds.minX - 0.5, maxX: bounds.maxX + 0.5, minZ: bounds.maxZ + 32, maxZ: FAR }, h: 12 },
   ];
   tiers.forEach((tier, index) => batches.boxes.push(boxItem(tier.rect, -0.3, tier.h, HILL_TONES[index % 3]!)));
+  batches.flats.push(flatItem({ minX: -FAR, maxX: bounds.minX, minZ: STRAIT_MIN_Z, maxZ: STRAIT_MAX_Z }, -0.3, WATER_TONE));
 
   // Tiny pastel houses climbing the hills, plus stepped streets between them.
   const houseCount = quality === 'low' ? 30 : 90;
   for (let index = 0; index < houseCount; index += 1) {
     const west = rng.next() < 0.55;
     const x = west ? bounds.minX - 3 - rng.next() * 40 : bounds.minX + rng.next() * width(bounds);
-    const z = west ? -60 + rng.next() * 130 : bounds.maxZ + 3 + rng.next() * 42;
+    const z = west ? STRAIT_MAX_Z + 4 + rng.next() * 110 : bounds.maxZ + 3 + rng.next() * 42;
     const tierHeight = west
       ? x < bounds.minX - 30 ? 12 : x < bounds.minX - 14 ? 7 : 3
       : z > bounds.maxZ + 32 ? 12 : z > bounds.maxZ + 14 ? 7 : 3;
@@ -367,101 +395,108 @@ function buildBackground(definition: CityDefinition, rng: Rng, quality: Quality,
     batches.boxes.push({ x, y: tierHeight - 0.3 + h / 2, z, sx: w, sy: h, sz: w, color: rng.pick(HILL_HOUSE_TONES) });
     batches.boxes.push({ x, y: tierHeight - 0.3 + h + 0.35, z, sx: w * 0.8, sy: 0.7, sz: w * 0.8, color: rng.pick(ROOF_TONES) });
   }
-  for (let z = -50; z < 120; z += 24) {
+  for (let z = STRAIT_MAX_Z + 14; z < 120; z += 24) {
     batches.boxes.push({ x: bounds.minX - 22, y: 4, z, sx: 44, sy: 8.5, sz: 3, color: DECK_TONE });
   }
 
-  // Restrained haze band on the horizon so the bay fades out instead of ending hard.
-  batches.boxes.push({ x: 0, y: 6, z: -FAR + 20, sx: FAR * 2.2, sy: 14, sz: 2, color: HAZE_TONE });
-  batches.boxes.push({ x: FAR - 20, y: 6, z: 0, sx: 2, sy: 14, sz: FAR * 2.2, color: HAZE_TONE });
+  // Restrained local haze: opaque bands stepping from lavender toward the sky colour, so the bay,
+  // the strait and the far bridge anchorage fade out without touching the scene's fog settings.
+  HAZE_BANDS.forEach((tone, index) => {
+    const y = 3 + index * 4;
+    batches.boxes.push({ x: 0, y, z: -FAR + 20 + index * 6, sx: FAR * 2.2, sy: 8, sz: 1, color: tone });
+    batches.boxes.push({ x: FAR - 20 - index * 6, y, z: 0, sx: 1, sy: 8, sz: FAR * 2.2, color: tone });
+    batches.boxes.push({ x: -FAR + 25 + index * 6, y, z: centerZ({ minX: 0, maxX: 0, minZ: STRAIT_MIN_Z, maxZ: STRAIT_MAX_Z }), sx: 1, sy: 8, sz: 70, color: tone });
+  });
+  // Low water mist drifting through the strait under the bridge deck.
+  for (let x = bounds.minX - 6; x > -FAR + 40; x -= 22) {
+    batches.boxes.push({ x, y: 1.2, z: STRAIT_MIN_Z + 6 + ((x * 7) % 20 + 20) % 20, sx: 16, sy: 1.6, sz: 5, color: HAZE_TONE });
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Golden Gate Bridge (hero). South tower stands on the approach blocker; the deck and north tower
-// run out over the bay north of the playable bounds (z < -72), where nobody can walk.
+// Golden Gate Bridge (hero). The chase camera pitches ~55 degrees down with a 48 degree FOV, so a
+// tall tower directly ahead leaves the frame: anything at height h is only visible while it is
+// closer than ~(52 - h) * 1.66 units ahead of the player. The bridge therefore runs EAST-WEST along
+// the approach blocker and out over the strait west of the bounds, with squat 22-unit towers, so
+// from anywhere in the bridge district at least one tower and the cables stay on screen.
 // ---------------------------------------------------------------------------
 
-const TOWER_HEIGHT = 46;
-const DECK_Y = 9;
-const DECK_HALF_WIDTH = 5;
-const NORTH_TOWER_Z = -104;
-const DECK_END_Z = -160;
+const TOWER_HEIGHT = 22;
+const DECK_Y = 6;
+const DECK_HALF_DEPTH = 4.5;
+const WEST_TOWER_X = -78;
+const DECK_END_X = -132;
 
 function buildGoldenGate(approach: Blocker, quality: Quality, batches: Batches): void {
-  const cx = centerX(approach);
-  const southTowerZ = centerZ(approach) - 3;
+  const cz = centerZ(approach);
+  const eastTowerX = approach.minX + 12;
 
-  // Approach: concrete plinth covering the whole blocker, toll-plaza kiosks and a ramp to deck height.
+  // Approach plaza: concrete plinth on the blocker, toll kiosks, cypresses; the deck ramps up onto it.
   batches.flats.push(shadowItem(approach));
   batches.boxes.push(boxItem(approach, 0, 1.2, CONCRETE_TONE));
   batches.boxes.push(boxItem(grow(approach, -0.6), 1.2, 0.3, LAVENDER));
-  const rampRect: RectXZ = { minX: cx - DECK_HALF_WIDTH - 1, maxX: cx + DECK_HALF_WIDTH + 1, minZ: approach.minZ, maxZ: approach.maxZ - 1 };
-  batches.boxes.push(boxItem(rampRect, 1.2, DECK_Y - 1.4, DECK_TONE));
-  batches.boxes.push(boxItem(grow(rampRect, 0.3), DECK_Y - 0.5, 0.5, ORANGE));
+  const ramp: RectXZ = { minX: approach.minX, maxX: approach.maxX - 1, minZ: cz - DECK_HALF_DEPTH - 1, maxZ: cz + DECK_HALF_DEPTH + 1 };
+  batches.boxes.push(boxItem(ramp, 1.2, DECK_Y - 1.4, DECK_TONE));
+  batches.boxes.push(boxItem(grow(ramp, 0.3), DECK_Y - 0.5, 0.5, ORANGE));
   for (const side of [-1, 1] as const) {
-    const x = cx + side * (DECK_HALF_WIDTH + 4.5);
-    batches.boxes.push({ x, y: 2.9, z: approach.maxZ - 5, sx: 3, sy: 3.4, sz: 3, color: CREAM });
-    batches.boxes.push({ x, y: 4.9, z: approach.maxZ - 5, sx: 4, sy: 0.6, sz: 4, color: ORANGE });
-    // Cypress trees flanking the plaza.
-    for (const z of [approach.minZ + 4, approach.minZ + 10, approach.maxZ - 12]) {
-      batches.cylinders.push({ x: x + side * 3.5, y: 2.2, z, sx: 0.6, sy: 2, sz: 0.6, color: TRUNK_TONE });
-      batches.spheres.push({ x: x + side * 3.5, y: 4.6, z, sx: 1.4, sy: 2.6, sz: 1.4, color: LEAF_TONES[1] });
+    const z = cz + side * (DECK_HALF_DEPTH + 4.5);
+    batches.boxes.push({ x: approach.maxX - 6, y: 2.9, z, sx: 3, sy: 3.4, sz: 3, color: CREAM });
+    batches.boxes.push({ x: approach.maxX - 6, y: 4.9, z, sx: 4, sy: 0.6, sz: 4, color: ORANGE });
+    for (const x of [approach.minX + 4, approach.maxX - 14, approach.maxX - 2.5]) {
+      batches.cylinders.push({ x, y: 2.2, z: z + side * 3, sx: 0.6, sy: 2, sz: 0.6, color: TRUNK_TONE });
+      batches.spheres.push({ x, y: 4.6, z: z + side * 3, sx: 1.4, sy: 2.6, sz: 1.4, color: LEAF_TONES[1] });
     }
   }
 
-  // Deck.
-  const deckLength = approach.minZ - DECK_END_Z;
-  const deckZ = (approach.minZ + DECK_END_Z) / 2;
-  batches.boxes.push({ x: cx, y: DECK_Y - 0.6, z: deckZ, sx: DECK_HALF_WIDTH * 2 + 1, sy: 1.2, sz: deckLength, color: DECK_TONE });
-  batches.boxes.push({ x: cx, y: DECK_Y - 1.7, z: deckZ, sx: DECK_HALF_WIDTH * 2 - 1, sy: 1.2, sz: deckLength, color: ORANGE_DARK });
+  // Deck over the strait, from the plaza edge west to the far anchorage.
+  const deckLength = approach.minX - DECK_END_X;
+  const deckX = (approach.minX + DECK_END_X) / 2;
+  batches.boxes.push({ x: deckX, y: DECK_Y - 0.6, z: cz, sx: deckLength, sy: 1.2, sz: DECK_HALF_DEPTH * 2 + 1, color: DECK_TONE });
+  batches.boxes.push({ x: deckX, y: DECK_Y - 1.7, z: cz, sx: deckLength, sy: 1.2, sz: DECK_HALF_DEPTH * 2 - 1, color: ORANGE_DARK });
   for (const side of [-1, 1] as const) {
-    batches.boxes.push({ x: cx + side * (DECK_HALF_WIDTH + 0.3), y: DECK_Y + 0.5, z: deckZ, sx: 0.4, sy: 1.0, sz: deckLength, color: ORANGE });
+    batches.boxes.push({ x: deckX, y: DECK_Y + 0.5, z: cz + side * (DECK_HALF_DEPTH + 0.3), sx: deckLength, sy: 1.0, sz: 0.4, color: ORANGE });
   }
   if (quality !== 'low') {
-    for (let z = approach.minZ - 6; z > DECK_END_Z; z -= 12) {
-      batches.flats.push({ x: cx, y: DECK_Y + 0.02, z, sx: 0.4, sy: 6, sz: 1, rx: FLAT, color: ROAD_LINE_TONE });
+    for (let x = approach.minX - 4; x > DECK_END_X; x -= 8) {
+      batches.flats.push({ x, y: DECK_Y + 0.02, z: cz, sx: 4, sy: 0.4, sz: 1, rx: FLAT, color: ROAD_LINE_TONE });
     }
   }
+  // Far anchorage block on the Marin side.
+  batches.boxes.push({ x: DECK_END_X - 4, y: DECK_Y / 2 - 0.3, z: cz, sx: 10, sy: DECK_Y + 0.3, sz: DECK_HALF_DEPTH * 2 + 6, color: CONCRETE_TONE });
 
-  // Towers: two legs joined by portal braces, on a pier block in the water.
-  for (const towerZ of [southTowerZ, NORTH_TOWER_Z]) {
-    const baseY = towerZ === southTowerZ ? 1.2 : -0.3;
-    if (towerZ !== southTowerZ) {
-      batches.boxes.push({ x: cx, y: 1.5, z: towerZ, sx: DECK_HALF_WIDTH * 2 + 8, sy: 4, sz: 12, color: CONCRETE_TONE });
-    }
+  // Towers: two legs (one each side of the deck) joined by portal braces.
+  for (const towerX of [eastTowerX, WEST_TOWER_X]) {
+    const onPlaza = towerX === eastTowerX;
+    const baseY = onPlaza ? 1.2 : -0.3;
+    if (!onPlaza) batches.boxes.push({ x: towerX, y: 1.5, z: cz, sx: 12, sy: 4, sz: DECK_HALF_DEPTH * 2 + 8, color: CONCRETE_TONE });
     for (const side of [-1, 1] as const) {
-      const x = cx + side * (DECK_HALF_WIDTH + 0.6);
-      batches.boxes.push({ x, y: baseY + TOWER_HEIGHT / 2, z: towerZ, sx: 2.6, sy: TOWER_HEIGHT, sz: 3.2, color: ORANGE });
-      batches.boxes.push({ x: x + side * 0.2, y: baseY + TOWER_HEIGHT / 2, z: towerZ, sx: 2.2, sy: TOWER_HEIGHT - 2, sz: 3.6, color: ORANGE_DARK });
-      batches.boxes.push({ x, y: baseY + TOWER_HEIGHT + 0.6, z: towerZ, sx: 3.2, sy: 1.2, sz: 3.8, color: ORANGE });
+      const z = cz + side * (DECK_HALF_DEPTH + 0.6);
+      batches.boxes.push({ x: towerX, y: baseY + TOWER_HEIGHT / 2, z, sx: 3.2, sy: TOWER_HEIGHT, sz: 2.6, color: ORANGE });
+      batches.boxes.push({ x: towerX, y: baseY + TOWER_HEIGHT / 2, z: z + side * 0.2, sx: 3.6, sy: TOWER_HEIGHT - 2, sz: 2.2, color: ORANGE_DARK });
+      batches.boxes.push({ x: towerX, y: baseY + TOWER_HEIGHT + 0.6, z, sx: 3.8, sy: 1.2, sz: 3.2, color: ORANGE });
     }
-    const braceYs = [DECK_Y + 6, DECK_Y + 16, DECK_Y + 26, TOWER_HEIGHT - 2];
-    for (const y of braceYs) {
-      batches.boxes.push({ x: cx, y: baseY + y, z: towerZ, sx: DECK_HALF_WIDTH * 2 + 1, sy: 2.4, sz: 3.4, color: ORANGE });
-      if (quality !== 'low') {
-        batches.boxes.push({ x: cx, y: baseY + y, z: towerZ + 1.75, sx: DECK_HALF_WIDTH * 2 + 1, sy: 1.2, sz: 0.2, color: ORANGE_DARK });
-      }
+    for (const y of [DECK_Y + 4.5, DECK_Y + 10, TOWER_HEIGHT - 1.5]) {
+      batches.boxes.push({ x: towerX, y: baseY + y, z: cz, sx: 3.4, sy: 2.2, sz: DECK_HALF_DEPTH * 2 + 1, color: ORANGE });
+      if (quality !== 'low') batches.boxes.push({ x: towerX + 1.75, y: baseY + y, z: cz, sx: 0.2, sy: 1.1, sz: DECK_HALF_DEPTH * 2 + 1, color: ORANGE_DARK });
     }
-    batches.boxes.push({ x: cx, y: baseY + 3, z: towerZ, sx: DECK_HALF_WIDTH * 2 + 1, sy: 6, sz: 3.4, color: ORANGE });
+    batches.boxes.push({ x: towerX, y: baseY + 2.5, z: cz, sx: 3.4, sy: 5, sz: DECK_HALF_DEPTH * 2 + 1, color: ORANGE });
   }
 
-  // Main cables: catenary from the south anchorage, over both towers, down to the far anchorage.
-  const anchorSouth: [number, number] = [approach.maxZ - 2, DECK_Y];
-  const anchorNorth: [number, number] = [DECK_END_Z + 6, DECK_Y];
-  const topY = TOWER_HEIGHT + 0.2;
-  const spans: { z0: number; y0: number; z1: number; y1: number; sag: number }[] = [
-    { z0: anchorSouth[0], y0: anchorSouth[1], z1: southTowerZ, y1: topY + 1.2, sag: 0 },
-    { z0: southTowerZ, y0: topY + 1.2, z1: NORTH_TOWER_Z, y1: topY - 0.3, sag: 26 },
-    { z0: NORTH_TOWER_Z, y0: topY - 0.3, z1: anchorNorth[0], y1: anchorNorth[1], sag: 0 },
+  // Main cables: from the plaza anchorage over both towers to the Marin anchorage.
+  const topY = TOWER_HEIGHT + 0.4;
+  const spans: { x0: number; y0: number; x1: number; y1: number; sag: number }[] = [
+    { x0: approach.maxX - 3, y0: DECK_Y, x1: eastTowerX, y1: topY + 1.2, sag: 0 },
+    { x0: eastTowerX, y0: topY + 1.2, x1: WEST_TOWER_X, y1: topY - 0.3, sag: 11 },
+    { x0: WEST_TOWER_X, y0: topY - 0.3, x1: DECK_END_X - 4, y1: DECK_Y, sag: 0 },
   ];
   const segments = quality === 'low' ? 6 : 12;
   for (const side of [-1, 1] as const) {
-    const x = cx + side * (DECK_HALF_WIDTH + 0.6);
+    const z = cz + side * (DECK_HALF_DEPTH + 0.6);
     for (const span of spans) {
       const points: Vec3[] = [];
       for (let index = 0; index <= segments; index += 1) {
         const t = index / segments;
-        const z = span.z0 + (span.z1 - span.z0) * t;
+        const x = span.x0 + (span.x1 - span.x0) * t;
         const y = span.y0 + (span.y1 - span.y0) * t - span.sag * 4 * t * (1 - t);
         points.push([x, y, z]);
       }
@@ -469,7 +504,6 @@ function buildGoldenGate(approach: Blocker, quality: Quality, batches: Batches):
         batches.boxes.push(strutItem(points[index]!, points[index + 1]!, 0.55, CABLE_TONE));
       }
       if (quality === 'low' || span.sag === 0) continue;
-      // Vertical hangers.
       for (let index = 1; index < points.length - 1; index += 1) {
         const [px, py, pz] = points[index]!;
         batches.boxes.push({ x: px, y: (py + DECK_Y) / 2, z: pz, sx: 0.16, sy: py - DECK_Y, sz: 0.16, color: CABLE_TONE });
@@ -501,8 +535,39 @@ function buildVictorianRow(block: Blocker, rng: Rng, quality: Quality, batches: 
     batches.boxes.push(boxItem(body, 0, height, pastel));
     // Cornice + roof cap (highlighted top face).
     batches.boxes.push(boxItem(grow(body, 0.25), height, 0.5, trim));
-    batches.boxes.push(boxItem(grow(body, -0.4), height + 0.5, 1.6, roof));
-    batches.boxes.push({ x: centerX(body), y: height + 2.6, z: centerZ(body), sx: 1.6, sy: 1.0, sz: 1.6, color: rng.pick(HILL_HOUSE_TONES) });
+    const style = rng.int(3);
+    if (style === 0) {
+      batches.boxes.push(boxItem(grow(body, -0.4), height + 0.5, 1.6, roof));
+      batches.boxes.push({ x: centerX(body), y: height + 2.6, z: centerZ(body), sx: 1.6, sy: 1.0, sz: 1.6, color: rng.pick(HILL_HOUSE_TONES) });
+    } else if (style === 1) {
+      // Gabled roof: two slanted slabs meeting on a ridge that runs along Z (gable faces the street).
+      const half = width(body) / 2;
+      const slope = 0.7;
+      const rise = half * Math.tan(slope);
+      for (const side of [-1, 1] as const) {
+        batches.boxes.push({
+          x: centerX(body) + (side * half) / 2,
+          y: height + 0.5 + rise / 2,
+          z: centerZ(body),
+          sx: half / Math.cos(slope) + 0.4,
+          sy: 0.35,
+          sz: depth(body) + 0.5,
+          rz: -side * slope,
+          color: roof,
+        });
+      }
+      batches.boxes.push({ x: centerX(body), y: height + 0.5 + rise / 2, z: centerZ(body), sx: width(body) - 0.3, sy: rise, sz: depth(body) - 0.3, color: pastel });
+      batches.boxes.push({ x: centerX(body), y: height + 0.5 + rise * 0.55, z: body.maxZ + 0.02, sx: 0.9, sy: 0.9, sz: 0.12, color: WINDOW_TONE });
+    } else {
+      // Corner turret with a domed cap, plus a low roof behind it.
+      batches.boxes.push(boxItem(grow(body, -0.4), height + 0.5, 1.2, roof));
+      const tx = body.maxX - 1.1;
+      const tz = body.maxZ - 0.6;
+      batches.cylinders.push({ x: tx, y: (height + 1.4) / 2, z: tz, sx: 2.0, sy: height + 1.4, sz: 2.0, color: pastel });
+      batches.cylinders.push({ x: tx, y: height + 1.6, z: tz, sx: 2.4, sy: 0.4, sz: 2.4, color: trim });
+      batches.spheres.push({ x: tx, y: height + 2.2, z: tz, sx: 1.05, sy: 1.3, sz: 1.05, color: roof });
+      batches.boxes.push({ x: tx, y: height + 3.9, z: tz, sx: 0.15, sy: 1.2, sz: 0.15, color: INK });
+    }
 
     // Bay window jutting out of the +Z face (the one the chase camera sees), two storeys tall.
     const bayWidth = Math.min(2.6, width(body) * 0.55);
@@ -513,6 +578,9 @@ function buildVictorianRow(block: Blocker, rng: Rng, quality: Quality, batches: 
     batches.boxes.push({ x: body.minX + 1.0, y: 0.35, z: body.maxZ + 0.6, sx: 1.2, sy: 0.7, sz: 1.2, color: STEP_TONE });
     batches.boxes.push({ x: body.minX + 1.0, y: 1.9, z: body.maxZ + 0.02, sx: 1.0, sy: 2.2, sz: 0.1, color: WINDOW_TONE });
     if (quality === 'low') continue;
+    if (rng.next() < 0.5) {
+      batches.boxes.push({ x: body.minX + 1.0, y: 3.25, z: body.maxZ + 0.55, sx: 1.6, sy: 0.12, sz: 1.1, rx: 0.35, color: rng.next() < 0.5 ? HOT_PINK : CYAN });
+    }
     for (let y = 2.4; y < height - 1.4; y += 2.6) {
       batches.boxes.push({ x: bayX, y: y + 0.8, z: body.maxZ + 1.02, sx: bayWidth - 0.8, sy: 1.4, sz: 0.08, color: GLASS_TONE });
       batches.boxes.push({ x: bayX - bayWidth / 2 - 0.02, y: y + 0.8, z: body.maxZ + 0.5, sx: 0.08, sy: 1.4, sz: 0.6, color: GLASS_TONE });
@@ -713,6 +781,9 @@ const FOAM_BARS: readonly InstanceItem[] = [
   { x: 100, y: -0.2, z: -20, sx: 20, sy: 0.5, sz: 1, rx: FLAT, color: FOAM_TONE },
   { x: 120, y: -0.2, z: 40, sx: 24, sy: 0.5, sz: 1, rx: FLAT, color: FOAM_TONE },
   { x: -10, y: -0.2, z: -160, sx: 30, sy: 0.5, sz: 1, rx: FLAT, color: FOAM_TONE },
+  { x: -95, y: -0.2, z: -52, sx: 14, sy: 0.5, sz: 1, rx: FLAT, color: FOAM_TONE },
+  { x: -118, y: -0.2, z: -36, sx: 18, sy: 0.5, sz: 1, rx: FLAT, color: FOAM_TONE },
+  { x: -84, y: -0.2, z: -32, sx: 10, sy: 0.5, sz: 1, rx: FLAT, color: FOAM_TONE },
 ];
 
 function BayShimmer() {
