@@ -20,7 +20,6 @@ import {
  * when a new warning appears or when a city owner fixes one (remove it here then).
  */
 const KNOWN_WARNINGS: readonly string[] = [
-  'warning [city] paris/cafe-b: only 2.0u from blocker cafe (prefer 3)',
   'warning [city] giza/sphinx-a: fine patch spills outside broad region of sphinx',
   'warning [city] giza/sphinx-c: fine patch spills outside broad region of sphinx',
   'warning [city] giza/market-a: fine patch spills outside broad region of market',

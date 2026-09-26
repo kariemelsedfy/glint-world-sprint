@@ -21,7 +21,7 @@ export const TARGETS: readonly TargetDefinition[] = [
     iconKind: 'portrait',
     hintText: [
       'Travel to Paris.',
-      'Search the Louvre courtyard, north-east of the crossroads.',
+      'Search the Louvre courtyard, north of where you arrive.',
       'The portrait stands on the paving just outside the museum walls — walk the building’s edge, never inside.',
     ],
     socketIds: ['louvre-a', 'louvre-b', 'louvre-c'],
@@ -37,7 +37,7 @@ export const TARGETS: readonly TargetDefinition[] = [
     iconKind: 'tower-token',
     hintText: [
       'Travel to Paris.',
-      'Search the Eiffel Tower plaza, west of the crossroads.',
+      'Search the Eiffel Tower plaza, north-west of where you arrive.',
       'The tiny tower stands on open plaza ground a few strides from the giant tower’s legs — circle its base.',
     ],
     socketIds: ['tower-a', 'tower-b', 'tower-c'],
@@ -53,7 +53,7 @@ export const TARGETS: readonly TargetDefinition[] = [
     iconKind: 'croissant',
     hintText: [
       'Travel to Paris.',
-      'Search the Cafe quarter, south-east of the crossroads.',
+      'Search the Cafe quarter, north-east of where you arrive.',
       'The croissant sits on the pavement outside the striped cafe, close to its walls — check every side.',
     ],
     socketIds: ['cafe-a', 'cafe-b', 'cafe-c'],
@@ -69,7 +69,7 @@ export const TARGETS: readonly TargetDefinition[] = [
     iconKind: 'pyramidion',
     hintText: [
       'Travel to Giza.',
-      'Search the Pyramid plateau, north-west of the crossroads.',
+      'Search the Pyramid plateau, north-west of where you arrive.',
       'The crown rests on a low pedestal on the open sand around the Great Pyramid, a short run from its base.',
     ],
     socketIds: ['pyramid-a', 'pyramid-b', 'pyramid-c'],
@@ -85,7 +85,7 @@ export const TARGETS: readonly TargetDefinition[] = [
     iconKind: 'sun-medallion',
     hintText: [
       'Travel to Giza.',
-      'Search the Sphinx terrace, east of the crossroads.',
+      'Search the Sphinx terrace, east of where you arrive.',
       'The medallion lies on the open ground beside the guardian, a few strides off its stone — walk around it.',
     ],
     socketIds: ['sphinx-a', 'sphinx-b', 'sphinx-c'],
@@ -101,7 +101,7 @@ export const TARGETS: readonly TargetDefinition[] = [
     iconKind: 'scarab',
     hintText: [
       'Travel to Giza.',
-      'Search the Desert market, south-east of the crossroads.',
+      'Search the Desert market, south-east of where you arrive.',
       'The scarab waits on the sand around the outer edge of the market stalls — never between them.',
     ],
     socketIds: ['market-a', 'market-b', 'market-c'],
