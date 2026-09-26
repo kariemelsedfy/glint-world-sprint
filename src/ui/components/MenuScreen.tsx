@@ -8,7 +8,7 @@ interface MenuScreenProps {
 }
 
 export function MenuScreen({ model, actions }: MenuScreenProps) {
-  const selectedLevel = model.levelId ?? model.levels[0]?.id ?? 'icons';
+  const selectedLevel = model.levelId;
 
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 sm:p-6 lg:p-8 select-none">
@@ -50,7 +50,7 @@ export function MenuScreen({ model, actions }: MenuScreenProps) {
           <div className="mb-3.5">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold uppercase tracking-wider text-[#12253B]/70">
-                Select Trial
+                Choose a trial
               </span>
               <span className="text-xs font-semibold text-[#19A7A0] flex items-center gap-1">
                 <CompassIcon size={14} /> {model.cities.length} cities
@@ -82,15 +82,9 @@ export function MenuScreen({ model, actions }: MenuScreenProps) {
             </div>
           </div>
 
-          {/* Primary Action Button */}
-          <button
-            type="button"
-            onClick={() => actions.onSelectLevel(selectedLevel)}
-            className="w-full min-h-[44px] py-3.5 px-6 rounded-xl bg-[#FFC857] hover:bg-[#ffcf66] active:translate-y-0.5 text-[#12253B] font-black text-base sm:text-lg border-2 border-[#12253B] shadow-[3px_3px_0px_0px_#12253B] flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-[#19A7A0] outline-none transition-all cursor-pointer"
-          >
-            <span>Start: read the briefing</span>
-            <span className="text-xl leading-none">➜</span>
-          </button>
+          <p className="text-[11px] font-semibold text-[#12253B]/70 text-center">
+            Pick a trial to read its briefing — the clock only starts when you press Go.
+          </p>
         </div>
       </footer>
     </div>

@@ -144,6 +144,11 @@
   .glint-ui .glint-compact-hide {
     display: none;
   }
+  /* Short landscape: centre the thumbstick under the HUD so it clears the objective cards. */
+  .glint-ui .glint-touch-layer {
+    justify-content: center;
+    padding-bottom: 0.75rem;
+  }
   .glint-ui .glint-compact-only {
     display: inline-flex;
   }

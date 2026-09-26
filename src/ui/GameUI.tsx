@@ -4,14 +4,12 @@
  * timers, scoring or store access. Root is pointer-events-none so the single Canvas in
  * src/app stays clickable; only controls and modal panels opt back in.
  */
-import { useState } from 'react';
-import type { TargetId, UIActions, UIModel } from '@/shared/contracts';
+import type { UIActions, UIModel } from '@/shared/contracts';
 import './glint.css';
 import { BriefingScreen } from './components/BriefingScreen';
 import { CityHUD } from './components/CityHUD';
 import { ErrorOverlay } from './components/ErrorOverlay';
 import { GlobeHUD } from './components/GlobeHUD';
-import { HintModal } from './components/HintModal';
 import { MapOverlay } from './components/MapOverlay';
 import { MenuScreen } from './components/MenuScreen';
 import { OrientationNotice } from './components/OrientationNotice';
@@ -29,16 +27,8 @@ export interface GameUIProps {
 }
 
 export function GameUI({ model, actions, showTouchControls }: GameUIProps) {
-  const [hintTargetId, setHintTargetId] = useState<TargetId | null>(null);
   const coarsePointer = useCoarsePointer();
   const touchControls = showTouchControls ?? coarsePointer;
-
-  const hintCard = hintTargetId ? model.cards.find((card) => card.targetId === hintTargetId) : undefined;
-  const hintOpen = model.phase === 'city' && hintCard !== undefined;
-
-  const openHint = (targetId: TargetId | undefined) => {
-    if (targetId) setHintTargetId(targetId);
-  };
 
   return (
     <div
@@ -65,8 +55,8 @@ export function GameUI({ model, actions, showTouchControls }: GameUIProps) {
 
       {model.phase === 'city' && (
         <>
-          <CityHUD model={model} actions={actions} onOpenHintModal={openHint} touch={touchControls} />
-          {touchControls && !model.paused && !model.map && !hintOpen && (
+          <CityHUD model={model} actions={actions} touch={touchControls} />
+          {touchControls && !model.paused && !model.map && (
             <TouchControls onTouchAxis={actions.onTouchAxis} />
           )}
         </>
@@ -79,19 +69,6 @@ export function GameUI({ model, actions, showTouchControls }: GameUIProps) {
       {model.phase === 'error' && <ErrorOverlay message={model.statusMessage} actions={actions} />}
 
       {model.map && <MapOverlay map={model.map} actions={actions} />}
-
-      {hintOpen && hintTargetId && (
-        <HintModal
-          cards={model.cards}
-          activeTargetId={hintTargetId}
-          onSelectTarget={(id) => {
-            setHintTargetId(id);
-            actions.onSelectObjective(id);
-          }}
-          onClose={() => setHintTargetId(null)}
-          actions={actions}
-        />
-      )}
 
       {model.paused && (model.phase === 'globe' || model.phase === 'city' || model.phase === 'travel') && (
         <PauseModal settings={model.settings} actions={actions} />

@@ -35,6 +35,7 @@ export function BriefingScreen({ model, actions }: BriefingScreenProps) {
         <button
           type="button"
           onClick={actions.onGo}
+          aria-label="Go"
           className="glint-compact-only items-center gap-1.5 min-h-[44px] px-4 rounded-xl bg-[#78D896] hover:bg-[#6ed08c] text-[#12253B] font-black text-sm border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#12253B] focus-visible:ring-2 focus-visible:ring-[#FFC857] outline-none"
         >
           Go ⚡
@@ -125,6 +126,7 @@ export function BriefingScreen({ model, actions }: BriefingScreenProps) {
         <button
           type="button"
           onClick={actions.onGo}
+          aria-label="Go"
           className="w-full min-h-[44px] py-3 sm:py-4 px-8 rounded-2xl bg-[#78D896] hover:bg-[#6ed08c] active:translate-y-0.5 text-[#12253B] font-black text-xl border-3 border-[#12253B] shadow-[4px_4px_0px_0px_#12253B] flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-[#FFC857] outline-none transition-all cursor-pointer"
         >
           <span>Go — start the clock</span>

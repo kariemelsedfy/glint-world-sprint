@@ -1,5 +1,5 @@
 import type { ResultVM, UIActions, UIModel } from '@/shared/contracts';
-import { formatTime, formatPenalty, formatScore } from '../format';
+import { formatTime, formatScore } from '../format';
 import { MedalBadge, TimerIcon } from './Icons';
 import { PassportStamp } from './PassportStamp';
 
@@ -45,12 +45,15 @@ export function ResultsScreen({ result, model, actions }: ResultsScreenProps) {
             {result.medal === 'complete' ? 'Completed' : `${result.medal} medal`}
           </h2>
 
-          <span className="text-xs font-black uppercase tracking-widest text-[#19A7A0] mb-0.5">
-            Adjusted time
-          </span>
-          <div className="glint-tabular text-4xl sm:text-5xl font-black text-[#12253B] tracking-tight mb-2">
-            {formatTime(result.adjustedMs)}
-          </div>
+          <p className="flex flex-col items-center mb-2">
+            <span className="text-xs font-black uppercase tracking-widest text-[#19A7A0] mb-0.5" aria-hidden="true">
+              Adjusted time
+            </span>
+            <span className="glint-tabular text-4xl sm:text-5xl font-black text-[#12253B] tracking-tight">
+              <span className="sr-only">Adjusted </span>
+              {formatTime(result.adjustedMs)}
+            </span>
+          </p>
 
           {/* Points earned */}
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#FFC857]/30 border border-[#B45309]/30 rounded-full text-xs font-black text-[#12253B]">
@@ -60,37 +63,14 @@ export function ResultsScreen({ result, model, actions }: ResultsScreenProps) {
 
         {/* Time and Penalty Breakdown Grid */}
         <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
-          <div className="grid grid-cols-3 gap-2 text-center">
-            {/* Raw Active Time */}
-            <div className="bg-white p-3 rounded-2xl border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#12253B]">
-              <span className="text-[10px] font-extrabold uppercase text-[#12253B]/70 block">
-                Active time
-              </span>
-              <span className="glint-tabular text-sm sm:text-base font-black text-[#12253B]">
-                {formatTime(result.activeMs)}
-              </span>
-            </div>
-
-            {/* Hint Penalties */}
-            <div className="bg-white p-3 rounded-2xl border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#12253B]">
-              <span className="text-[10px] font-extrabold uppercase text-[#12253B]/70 block">
-                Hint penalty
-              </span>
-              <span className="glint-tabular text-sm sm:text-base font-black text-[#FF655B]">
-                {formatPenalty(result.hintPenaltyMs)}
-              </span>
-            </div>
-
-            {/* Travel Penalties */}
-            <div className="bg-white p-3 rounded-2xl border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#12253B]">
-              <span className="text-[10px] font-extrabold uppercase text-[#12253B]/70 block">
-                Travel penalty
-              </span>
-              <span className="glint-tabular text-sm sm:text-base font-black text-[#FF655B]">
-                {formatPenalty(result.travelPenaltyMs)}
-              </span>
-            </div>
-          </div>
+          <p className="glint-tabular bg-white p-3 rounded-2xl border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#12253B] text-center text-xs sm:text-sm font-bold text-[#12253B]">
+            Active <span className="font-black">{formatTime(result.activeMs)}</span> · hints{' '}
+            <span className="font-black text-[#FF655B]">{formatTime(result.hintPenaltyMs)}</span> · travel{' '}
+            <span className="font-black text-[#FF655B]">{formatTime(result.travelPenaltyMs)}</span>
+          </p>
+          {result.practice && (
+            <p className="text-xs font-bold text-[#FF655B] text-center">Practice run — not saved as a best.</p>
+          )}
 
           {/* Best on This Device & Session Status */}
           <div className="bg-white/80 p-3.5 rounded-2xl border-2 border-[#12253B] flex items-center justify-between">
@@ -121,7 +101,7 @@ export function ResultsScreen({ result, model, actions }: ResultsScreenProps) {
               onClick={actions.onRetry}
               className="w-full min-h-[44px] py-3.5 px-6 rounded-2xl bg-[#FFC857] hover:bg-[#ffcf66] text-[#12253B] font-black text-base border-3 border-[#12253B] shadow-[4px_4px_0px_0px_#12253B] active:translate-y-0.5 focus-visible:ring-2 focus-visible:ring-[#19A7A0] outline-none transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
-              <span>Retry this trial</span>
+              <span>Retry</span>
             </button>
 
             <div className="grid grid-cols-2 gap-2">

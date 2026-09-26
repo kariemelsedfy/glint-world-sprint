@@ -26,13 +26,13 @@ export function TravelOverlay({ cityId, cityLabel, statusMessage }: TravelOverla
 
       <div className="bg-[#FFF6E5] p-5 sm:p-6 rounded-3xl border-3 border-[#12253B] shadow-[6px_6px_0px_0px_#12253B] max-w-sm w-full">
         <span className="text-[11px] font-black uppercase tracking-widest text-[#19A7A0] block mb-1">
-          Travelling
+          Travelling…
         </span>
         <h2 className="text-xl sm:text-2xl font-black text-[#12253B]">
           {cityId ? `Entering ${cityName}` : 'Back to the globe'}
         </h2>
         <p className="text-xs text-[#12253B]/70 font-semibold mt-2">
-          {statusMessage ?? 'Loading the streets and landmarks…'}
+          {statusMessage ?? 'Loading the streets and landmarks'}
         </p>
 
         {/* Playful transit loader bar */}

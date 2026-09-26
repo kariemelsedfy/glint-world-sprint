@@ -25,14 +25,7 @@ export function MapOverlay({ map, actions }: MapOverlayProps) {
   const { bounds, roads, blockers, landmarks, player, searchAreas, cityLabel } = map;
   const width = Math.max(bounds.maxX - bounds.minX, 1);
   const height = Math.max(bounds.maxZ - bounds.minZ, 1);
-
-  // Helper coordinate mapper to 0..100 percentage or SVG coords
-  const mapX = (x: number) => ((x - bounds.minX) / width) * 100;
-  const mapZ = (z: number) => ((z - bounds.minZ) / height) * 100;
-  const mapRadiusX = (r: number) => (r / width) * 100;
-
-  const playerPercentX = mapX(player[0]);
-  const playerPercentZ = mapZ(player[1]);
+  const unit = Math.max(width, height) / 100;
 
   return (
     <div
@@ -67,7 +60,7 @@ export function MapOverlay({ map, actions }: MapOverlayProps) {
             type="button"
             onClick={close}
             className="min-h-[44px] min-w-[44px] p-2 sm:px-3 sm:py-1.5 bg-[#12253B] hover:bg-[#203a59] text-white font-black text-sm rounded-xl border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#FFC857] focus-visible:ring-2 focus-visible:ring-[#FFC857] outline-none"
-            aria-label="Close map"
+            aria-label="Close"
           >
             Close ✕
           </button>
@@ -75,109 +68,96 @@ export function MapOverlay({ map, actions }: MapOverlayProps) {
 
         {/* Map Body: Map Canvas & Legend */}
         <div className="flex-1 p-3 sm:p-5 overflow-auto flex flex-col items-center justify-center bg-[#F9F3E8]">
-          <div className="relative w-full aspect-square max-h-[60vh] max-w-[560px] bg-[#FFFBF0] border-2 border-[#12253B] rounded-2xl shadow-inner overflow-hidden">
+          <div className="relative w-full aspect-square max-h-[60vh] max-w-[560px] glint-map-frame bg-[#FFFBF0] border-2 border-[#12253B] rounded-2xl shadow-inner overflow-hidden">
             {/* SVG Render */}
-            <svg viewBox="0 0 100 100" className="w-full h-full">
+            <svg
+              role="img"
+              aria-label={`${cityLabel} map`}
+              viewBox={`${bounds.minX} ${bounds.minZ} ${width} ${height}`}
+              className="w-full h-full"
+            >
               <defs>
-                <pattern id="toyGrid" width="10" height="10" patternUnits="userSpaceOnUse">
-                  <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#EAE2D2" strokeWidth="0.5" />
+                <pattern id="toyGrid" width={unit * 10} height={unit * 10} patternUnits="userSpaceOnUse">
+                  <path d={`M ${unit * 10} 0 L 0 0 0 ${unit * 10}`} fill="none" stroke="#EAE2D2" strokeWidth={unit * 0.5} />
                 </pattern>
               </defs>
 
-              <rect width="100" height="100" fill="url(#toyGrid)" />
+              <rect x={bounds.minX} y={bounds.minZ} width={width} height={height} fill="url(#toyGrid)" />
 
-              {/* Roads */}
               {roads.map((road, idx) => (
                 <rect
                   key={`road-${idx}`}
-                  x={mapX(road.minX)}
-                  y={mapZ(road.minZ)}
-                  width={Math.max(mapX(road.maxX) - mapX(road.minX), 1)}
-                  height={Math.max(mapZ(road.maxZ) - mapZ(road.minZ), 1)}
+                  x={road.minX}
+                  y={road.minZ}
+                  width={road.maxX - road.minX}
+                  height={road.maxZ - road.minZ}
                   fill="#DFD7C7"
                   stroke="#CEC3B0"
-                  strokeWidth="0.4"
+                  strokeWidth={unit * 0.4}
                 />
               ))}
 
-              {/* City Blockers / Buildings */}
               {blockers.map((b) => (
                 <rect
                   key={b.id}
-                  x={mapX(b.minX)}
-                  y={mapZ(b.minZ)}
-                  width={Math.max(mapX(b.maxX) - mapX(b.minX), 1)}
-                  height={Math.max(mapZ(b.maxZ) - mapZ(b.minZ), 1)}
+                  x={b.minX}
+                  y={b.minZ}
+                  width={b.maxX - b.minX}
+                  height={b.maxZ - b.minZ}
                   fill="#C6BAA8"
                   stroke="#12253B"
-                  strokeWidth="0.5"
-                  rx="0.5"
+                  strokeWidth={unit * 0.5}
+                  rx={unit * 0.5}
                 />
               ))}
 
-              {/* Landmarks */}
-              {landmarks.map((l) => {
-                const cx = mapX(l.center[0]);
-                const cz = mapZ(l.center[1]);
-                return (
-                  <g key={l.id}>
-                    <rect
-                      x={mapX(l.footprint.minX)}
-                      y={mapZ(l.footprint.minZ)}
-                      width={Math.max(mapX(l.footprint.maxX) - mapX(l.footprint.minX), 2)}
-                      height={Math.max(mapZ(l.footprint.maxZ) - mapZ(l.footprint.minZ), 2)}
-                      fill="#FFC857"
-                      stroke="#12253B"
-                      strokeWidth="0.6"
-                      rx="0.8"
-                    />
-                    <circle cx={cx} cy={cz} r="1.5" fill="#12253B" />
-                    {l.label && (
-                      <text
-                        x={cx}
-                        y={cz - 2.5}
-                        textAnchor="middle"
-                        fontSize="2.8"
-                        fontWeight="bold"
-                        fill="#12253B"
-                        fontFamily="sans-serif"
-                      >
-                        {l.label}
-                      </text>
-                    )}
-                  </g>
-                );
-              })}
+              {landmarks.map((l) => (
+                <g key={l.id}>
+                  <rect
+                    x={l.footprint.minX}
+                    y={l.footprint.minZ}
+                    width={l.footprint.maxX - l.footprint.minX}
+                    height={l.footprint.maxZ - l.footprint.minZ}
+                    fill="#FFC857"
+                    stroke="#12253B"
+                    strokeWidth={unit * 0.6}
+                    rx={unit * 0.8}
+                  />
+                  {l.label && (
+                    <text
+                      x={l.center[0]}
+                      y={l.footprint.minZ - unit * 1.5}
+                      textAnchor="middle"
+                      fontSize={unit * 3.2}
+                      fontWeight="bold"
+                      fill="#12253B"
+                      stroke="#FFFBF0"
+                      strokeWidth={unit * 0.6}
+                      paintOrder="stroke"
+                      fontFamily="sans-serif"
+                    >
+                      {l.label}
+                    </text>
+                  )}
+                </g>
+              ))}
 
-              {/* Broad Amber Search Areas */}
-              {searchAreas.map((sa, idx) => {
-                const cx = mapX(sa.center[0]);
-                const cz = mapZ(sa.center[1]);
-                const rad = mapRadiusX(sa.radius);
-                return (
-                  <g key={`search-area-${idx}`}>
-                    <circle
-                      cx={cx}
-                      cy={cz}
-                      r={rad}
-                      fill="#FFC857"
-                      fillOpacity="0.25"
-                      stroke="#D97706"
-                      strokeWidth="1.2"
-                      strokeDasharray="3 1.5"
-                    />
-                    <circle cx={cx} cy={cz} r="1.5" fill="#D97706" />
-                  </g>
-                );
-              })}
+              {searchAreas.map((area) => (
+                <circle
+                  key={area.targetId}
+                  cx={area.center[0]}
+                  cy={area.center[1]}
+                  r={area.radius}
+                  fill="#ffd166"
+                  fillOpacity={0.3}
+                  stroke="#D97706"
+                  strokeWidth={unit * 1}
+                  strokeDasharray={`${unit * 3} ${unit * 1.5}`}
+                />
+              ))}
 
-              {/* Player Position Indicator */}
-              <g transform={`translate(${playerPercentX}, ${playerPercentZ})`}>
-                {/* Glow ring */}
-                <circle r="4.5" fill="#24B8E8" fillOpacity="0.3" />
-                <circle r="2.8" fill="#24B8E8" stroke="#12253B" strokeWidth="1" />
-                <polygon points="0,-4 2.5,2 0,0.8 -2.5,2" fill="#FF655B" stroke="#12253B" strokeWidth="0.6" />
-              </g>
+              <circle cx={player[0]} cy={player[1]} r={unit * 4} fill="#24B8E8" fillOpacity={0.3} />
+              <circle cx={player[0]} cy={player[1]} r={2.2} fill="#24B8E8" stroke="#12253B" strokeWidth={unit * 0.6} />
             </svg>
 
             {/* Toy North Compass Badge in corner */}

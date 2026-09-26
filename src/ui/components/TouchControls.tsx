@@ -109,7 +109,7 @@ export function TouchControls({ onTouchAxis }: TouchControlsProps) {
   }, [isMouseDown, updateKnob, onTouchAxis]);
 
   return (
-    <div className="absolute inset-0 pointer-events-none flex justify-start items-end p-4 sm:px-6 pb-[88px] select-none z-30">
+    <div className="glint-touch-layer absolute inset-0 pointer-events-none flex justify-start items-end p-4 sm:px-6 pb-[88px] select-none z-30">
       {/* Lower-left Virtual Thumbstick */}
       <div className="pointer-events-auto flex flex-col items-center">
         <div

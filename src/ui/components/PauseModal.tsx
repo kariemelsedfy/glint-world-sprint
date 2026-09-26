@@ -51,7 +51,7 @@ export function PauseModal({ settings, actions }: PauseModalProps) {
             onClick={actions.onRetry}
             className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-[#FFC857] hover:bg-[#ffcf66] text-[#12253B] font-bold text-xs border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#12253B] active:translate-y-0.5 focus-visible:ring-2 focus-visible:ring-[#19A7A0] outline-none transition-all"
           >
-            Retry (fresh timed run)
+            Retry
           </button>
 
           <button
