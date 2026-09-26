@@ -4,6 +4,7 @@
  */
 import { HINT_COST_MS } from '@/shared/contracts';
 import type {
+  CityId,
   HintTier,
   MapVM,
   ObjectiveCardVM,
@@ -82,6 +83,13 @@ function mapFor(state: RunState): MapVM | null {
   };
 }
 
+function destinationCityId(state: RunState): CityId | null {
+  if (state.phase === 'travel' && state.travel) {
+    return state.travel.to === 'globe' ? null : state.travel.to;
+  }
+  return state.cityId;
+}
+
 export function toUIModel(state: RunState): UIModel {
   const run = state.run;
   const penaltyMs = run ? run.hintPenaltyMs + run.travelPenaltyMs : 0;
@@ -91,7 +99,7 @@ export function toUIModel(state: RunState): UIModel {
     levelId: state.levelId,
     levels: LEVELS.map((level) => ({ id: level.id, title: level.title })),
     cities: listCities(),
-    cityId: state.cityId,
+    cityId: destinationCityId(state),
     cards: run ? run.objectives.map((objective) => cardFor(state, objective.targetId)) : [],
     activeMs: run ? run.activeMs : 0,
     adjustedMs: run ? adjustedMs(run) : 0,
