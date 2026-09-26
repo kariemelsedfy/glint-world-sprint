@@ -69,6 +69,7 @@ export function SceneHost({ location, quality, interactiveGlobe, onSelectCity }:
       {!isCity && (
         <GlobeScene
           interactive={interactiveGlobe}
+          quality={quality}
           onSelectCity={onSelectCity}
           cities={listCities().map(({ id }) => {
             const definition = getCity(id);
