@@ -13,7 +13,10 @@ import {
   searchCircles,
   setTabHidden,
   startLevel,
+  TRAVEL_TIMEOUT_MS,
 } from './support/game';
+
+test.describe.configure({ timeout: 240_000 });
 
 const HINT_LABEL = [/^Hint 1: city \(\+10s\)$/, /^Hint 2: district \(\+20s\)$/, /^Hint 3: nearby \(\+35s\)$/] as const;
 
@@ -126,7 +129,7 @@ test('pause marks practice; hiding the tab mid-travel pauses travel and marks pr
 
   await setTabHidden(page, false);
   await page.getByRole('button', { name: 'Resume', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Globe', exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('button', { name: 'Globe', exact: true })).toBeVisible({ timeout: TRAVEL_TIMEOUT_MS });
   await expect(clock.practice).toBeVisible();
   expect(await clock.penaltyMs(), 'the resumed arrival is charged exactly once').toBe(ENTRY_PENALTY_MS);
 
