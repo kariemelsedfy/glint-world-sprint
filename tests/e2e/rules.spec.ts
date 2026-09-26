@@ -92,7 +92,7 @@ test('hint tiers cost 10s/20s/35s incrementally, name the next price and narrow 
   expect(errors).toEqual([]);
 });
 
-test('a hint double-click never skips a tier or charges more than the two named prices', async ({ page }) => {
+test('a hint double-click buys exactly one tier', async ({ page }) => {
   const [, second] = level('icons').objectives;
   if (!second) throw new Error('icons must have two objectives');
   await openFresh(page);
@@ -101,9 +101,8 @@ test('a hint double-click never skips a tier or charges more than the two named 
   const card = page.locator('li', { hasText: second.title });
 
   await card.getByRole('button', { name: HINT_LABEL[0] }).dblclick();
-  const charged = await clock.penaltyMs();
-  expect([HINT_COST_MS[0], HINT_COST_MS[0] + HINT_COST_MS[1]]).toContain(charged);
-  test.info().annotations.push({ type: 'observed-double-click-charge-ms', description: String(charged) });
+  expect(await clock.penaltyMs()).toBe(HINT_COST_MS[0]);
+  await expect(card.getByRole('button', { name: HINT_LABEL[1] })).toBeVisible();
 });
 
 test('pause marks practice; hiding the tab mid-travel pauses travel and marks practice', async ({ page }) => {

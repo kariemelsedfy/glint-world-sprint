@@ -1,7 +1,7 @@
 /**
  * Shared e2e helpers. They drive the production build only through real DOM controls and
  * keyboard input; nothing here reaches into the store or ships a test hook.
- * Selectors target the current bootstrap GameUI; update them here when A5's UI lands.
+ * Selectors target the accessible names of the production GameUI.
  */
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
@@ -160,29 +160,147 @@ export function searchCircles(svg: Locator): Locator {
 
 type Leg = { readonly axis: 'x' | 'z'; readonly value: number };
 
-function segmentHits(rect: RectXZ, from: readonly [number, number], to: readonly [number, number]): boolean {
-  const pad = PLAYER_RADIUS + 0.4;
-  const minX = Math.min(from[0], to[0]);
-  const maxX = Math.max(from[0], to[0]);
-  const minZ = Math.min(from[1], to[1]);
-  const maxZ = Math.max(from[1], to[1]);
-  return maxX > rect.minX - pad && minX < rect.maxX + pad && maxZ > rect.minZ - pad && minZ < rect.maxZ + pad;
+const GRID_STEP = 2;
+const CLEARANCE = PLAYER_RADIUS + 0.9;
+const TURN_COST = 4;
+const DIRECTIONS = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+] as const;
+
+interface Grid {
+  readonly origin: readonly [number, number];
+  readonly width: number;
+  readonly height: number;
+  readonly free: readonly boolean[];
 }
 
-/** Picks an axis-aligned two-leg route (Z then X, or X then Z) that clears every blocker. */
-export function planRoute(cityId: CityId, from: readonly [number, number], to: readonly [number, number]): Leg[] {
-  const blockers = city(cityId).blockers;
-  const candidates: { corner: [number, number]; legs: Leg[] }[] = [
-    { corner: [from[0], to[1]], legs: [{ axis: 'z', value: to[1] }, { axis: 'x', value: to[0] }] },
-    { corner: [to[0], from[1]], legs: [{ axis: 'x', value: to[0] }, { axis: 'z', value: to[1] }] },
-  ];
-  for (const candidate of candidates) {
-    const clear = blockers.every(
-      (blocker) => !segmentHits(blocker, from, candidate.corner) && !segmentHits(blocker, candidate.corner, to),
-    );
-    if (clear) return candidate.legs;
+const grids = new Map<CityId, Grid>();
+
+/** Occupancy grid over the city: a cell is free when its centre clears every padded blocker. */
+function gridFor(cityId: CityId): Grid {
+  const cached = grids.get(cityId);
+  if (cached) return cached;
+  const { bounds, blockers } = city(cityId);
+  const origin = [bounds.minX + CLEARANCE, bounds.minZ + CLEARANCE] as const;
+  const width = Math.floor((bounds.maxX - CLEARANCE - origin[0]) / GRID_STEP) + 1;
+  const height = Math.floor((bounds.maxZ - CLEARANCE - origin[1]) / GRID_STEP) + 1;
+  const free: boolean[] = [];
+  for (let row = 0; row < height; row += 1) {
+    for (let col = 0; col < width; col += 1) {
+      const x = origin[0] + col * GRID_STEP;
+      const z = origin[1] + row * GRID_STEP;
+      free.push(
+        blockers.every(
+          (b) => x <= b.minX - CLEARANCE || x >= b.maxX + CLEARANCE || z <= b.minZ - CLEARANCE || z >= b.maxZ + CLEARANCE,
+        ),
+      );
+    }
   }
-  throw new Error(`No clear two-leg route in ${cityId} from ${from.join(',')} to ${to.join(',')}`);
+  const grid = { origin, width, height, free };
+  grids.set(cityId, grid);
+  return grid;
+}
+
+function cellCentre(grid: Grid, cell: number): [number, number] {
+  return [grid.origin[0] + (cell % grid.width) * GRID_STEP, grid.origin[1] + Math.floor(cell / grid.width) * GRID_STEP];
+}
+
+function nearestFreeCell(grid: Grid, point: readonly [number, number]): number {
+  let best = -1;
+  let bestDistance = Infinity;
+  grid.free.forEach((isFree, cell) => {
+    if (!isFree) return;
+    const [x, z] = cellCentre(grid, cell);
+    const distance = Math.hypot(x - point[0], z - point[1]);
+    if (distance < bestDistance) {
+      best = cell;
+      bestDistance = distance;
+    }
+  });
+  if (best < 0) throw new Error('City grid has no free cell');
+  return best;
+}
+
+/**
+ * Grid A* (4-connected, turn-penalised) over the city blockers, compressed into axis-aligned
+ * legs. Ends with a direct approach to the target; pickup triggers within PICKUP_RADIUS even
+ * when the socket sits against a blocker.
+ */
+export function planRoute(cityId: CityId, from: readonly [number, number], to: readonly [number, number]): Leg[] {
+  const grid = gridFor(cityId);
+  const startCell = nearestFreeCell(grid, from);
+  const goalCell = nearestFreeCell(grid, to);
+  const goal = cellCentre(grid, goalCell);
+  const heuristic = (cell: number) => {
+    const [x, z] = cellCentre(grid, cell);
+    return (Math.abs(x - goal[0]) + Math.abs(z - goal[1])) / GRID_STEP;
+  };
+  // State = cell * 4 + arrival direction; the start state uses every direction at cost 0.
+  const cost = new Map<number, number>();
+  const parent = new Map<number, number>();
+  const open: { state: number; f: number }[] = [];
+  for (let dir = 0; dir < 4; dir += 1) {
+    cost.set(startCell * 4 + dir, 0);
+    open.push({ state: startCell * 4 + dir, f: heuristic(startCell) });
+  }
+  let reached = -1;
+  while (open.length > 0) {
+    open.sort((a, b) => a.f - b.f);
+    const { state } = open.shift()!;
+    const cell = Math.floor(state / 4);
+    const dir = state % 4;
+    if (cell === goalCell) {
+      reached = state;
+      break;
+    }
+    const col = cell % grid.width;
+    const row = Math.floor(cell / grid.width);
+    DIRECTIONS.forEach(([dc, dr], nextDir) => {
+      const nc = col + dc;
+      const nr = row + dr;
+      if (nc < 0 || nr < 0 || nc >= grid.width || nr >= grid.height) return;
+      const next = nr * grid.width + nc;
+      if (!grid.free[next]) return;
+      const nextState = next * 4 + nextDir;
+      const g = cost.get(state)! + 1 + (cell !== startCell && nextDir !== dir ? TURN_COST : 0);
+      if (g >= (cost.get(nextState) ?? Infinity)) return;
+      cost.set(nextState, g);
+      parent.set(nextState, state);
+      open.push({ state: nextState, f: g + heuristic(next) });
+    });
+  }
+  if (reached < 0) throw new Error(`No route in ${cityId} from ${from.join(',')} to ${to.join(',')}`);
+
+  const cells: number[] = [];
+  for (let state: number | undefined = reached; state !== undefined; state = parent.get(state)) {
+    cells.unshift(Math.floor(state / 4));
+  }
+  const points = cells.map((cell) => cellCentre(grid, cell));
+  const legs: Leg[] = [];
+  const push = (leg: Leg) => {
+    const last = legs.at(-1);
+    if (last && last.axis === leg.axis) legs[legs.length - 1] = leg;
+    else legs.push(leg);
+  };
+  // Snap onto the grid lane from wherever the player stands (start cell is within one step).
+  const first = points[0]!;
+  const second = points[1];
+  const firstAxis: Leg['axis'] = second && second[0] !== first[0] ? 'z' : 'x';
+  push({ axis: firstAxis, value: firstAxis === 'x' ? first[0] : first[1] });
+  push({ axis: firstAxis === 'x' ? 'z' : 'x', value: firstAxis === 'x' ? first[1] : first[0] });
+  for (let index = 1; index < points.length; index += 1) {
+    const [px, pz] = points[index - 1]!;
+    const [x, z] = points[index]!;
+    if (x !== px) push({ axis: 'x', value: x });
+    if (z !== pz) push({ axis: 'z', value: z });
+  }
+  const goalLeg: Leg['axis'] = Math.abs(to[0] - goal[0]) >= Math.abs(to[1] - goal[1]) ? 'x' : 'z';
+  push({ axis: goalLeg, value: goalLeg === 'x' ? to[0] : to[1] });
+  push({ axis: goalLeg === 'x' ? 'z' : 'x', value: goalLeg === 'x' ? to[1] : to[0] });
+  return legs;
 }
 
 async function isCollected(page: Page, title: string): Promise<boolean> {
@@ -234,7 +352,8 @@ export interface ResultBreakdown {
 export async function readResults(page: Page): Promise<ResultBreakdown> {
   await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
   const medal = ((await page.getByRole('heading', { level: 2 }).first().textContent()) ?? '').trim();
-  const adjustedText = (await page.getByText(/^Adjusted /).textContent()) ?? '';
+  const adjustedText =
+    (await page.locator('span').filter({ hasText: /^Adjusted \d+:\d{2}\.\d$/ }).textContent()) ?? '';
   const breakdown = (await page.getByText(/^Active /).textContent()) ?? '';
   const match = /Active (\S+) · hints (\S+) · travel (\S+)/.exec(breakdown);
   if (!match) throw new Error(`Unexpected breakdown: ${breakdown}`);
@@ -244,7 +363,7 @@ export async function readResults(page: Page): Promise<ResultBreakdown> {
     activeMs: parseClock(match[1]!),
     hintMs: parseClock(match[2]!),
     travelMs: parseClock(match[3]!),
-    practice: await page.getByText(/Practice run/).isVisible(),
+    practice: await page.getByText(/^Practice run —/).isVisible(),
   };
 }
 
