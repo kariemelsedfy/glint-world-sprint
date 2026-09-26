@@ -1,7 +1,8 @@
 /**
  * Measurement pass, not a performance gate: records menu-ready load time and rAF frame timing on
- * the production preview and writes test-results/perf/<label>.json. Assertions are sanity checks
- * only, because the default project renders WebGL through SwiftShader (CPU), not a GPU.
+ * the production preview and writes test-results/perf/<label>.json. The default project renders
+ * WebGL through SwiftShader on the CPU, so frame times depend on host load and say nothing about a
+ * GPU; the only assertions are that the page loads and every scene keeps presenting frames.
  * Set PERF_GPU=1 to add a run without the SwiftShader flags (hardware GL where available).
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -10,7 +11,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { flyTo, openFresh, startLevel } from './support/game';
 
 const SAMPLE_MS = 5_000;
-const WARMUP_FRAMES = 30;
+const WARMUP_MS = 1_000;
+/** A scene that presents fewer frames than this in SAMPLE_MS is effectively frozen. */
+const MIN_FRAMES = 5;
 /** Chosen throttle profile, documented in docs/qa/PERFORMANCE.md: 9 Mbit/s down, 60 ms RTT, cache off. */
 const THROTTLE = { latency: 60, downloadThroughput: (9 * 1024 * 1024) / 8, uploadThroughput: (1.5 * 1024 * 1024) / 8 };
 
@@ -55,24 +58,22 @@ async function measureLoad(page: Page): Promise<LoadStats> {
 
 async function measureFrames(page: Page): Promise<FrameStats> {
   const deltas = await page.evaluate(
-    ({ sampleMs, warmup }) =>
+    ({ sampleMs, warmupMs }) =>
       new Promise<number[]>((done) => {
         const out: number[] = [];
+        const begin = performance.now();
         let last = -1;
-        let seen = 0;
         let start = -1;
         const tick = (now: number) => {
-          if (last >= 0 && ++seen > warmup) {
-            if (start < 0) start = now;
-            out.push(now - last);
-          }
+          if (start < 0 && now - begin >= warmupMs) start = now;
+          else if (start >= 0) out.push(now - last);
           last = now;
           if (start >= 0 && now - start >= sampleMs) done(out);
           else requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
       }),
-    { sampleMs: SAMPLE_MS, warmup: WARMUP_FRAMES },
+    { sampleMs: SAMPLE_MS, warmupMs: WARMUP_MS },
   );
   const sorted = [...deltas].sort((a, b) => a - b);
   const pick = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0;
@@ -128,21 +129,25 @@ async function measureAll(page: Page, label: string): Promise<void> {
     devicePixelRatio: devicePixelRatio,
     hardwareConcurrency: navigator.hardwareConcurrency,
   }));
+  const rendererName = await renderer(page);
   const data = {
     label,
     measuredAt: new Date().toISOString(),
-    renderer: await renderer(page),
+    renderer: rendererName,
     ...environment,
     quality: 'standard (default settings)',
     sampleMsPerScene: SAMPLE_MS,
-    warmupFrames: WARMUP_FRAMES,
+    warmupMs: WARMUP_MS,
+    softwareRendered: /swiftshader/i.test(rendererName),
     load: { localPreview: loadLocal, throttled9MbitRtt60: loadThrottled },
     frames: { menu, globe, paris },
   };
   record(label, data);
 
   expect(loadLocal.menuReadyMs).toBeLessThan(15_000);
-  for (const stats of [menu, globe, paris]) expect(stats.frames).toBeGreaterThan(20);
+  for (const [scene, stats] of Object.entries({ menu, globe, paris })) {
+    expect(stats.frames, `${scene} presented ${stats.frames} frames in ${SAMPLE_MS} ms`).toBeGreaterThanOrEqual(MIN_FRAMES);
+  }
 }
 
 test('measures load and frame timing (SwiftShader, default project)', async ({ page }) => {
