@@ -45,8 +45,13 @@ const EURASIA: Outline = [
   [70, 26], [71, 55], [76, 70], [76, 105], [72, 130], [69, 160], [64, 180], [59, 164], [55, 158],
   [51, 141], [43, 134], [39, 122], [30, 122], [22, 112], [12, 109], [1, 104], [8, 98], [16, 94],
   [22, 90], [17, 82], [8, 77], [21, 72], [24, 61], [26, 56], [22, 58], [15, 52], [13, 43], [21, 39],
-  [30, 33], [36, 36], [36, 28], [40, 22], [37, 15], [44, 12], [43, 7], [37, -2], [37, -9], [43, -9],
-  [48, -5], [51, 2], [54, 8], [57, 8], [58, 6], [62, 5], [69, 14],
+  // Europe is traced densely (duplicate vertices sharpen peninsula tips) because three pins land here.
+  [30, 33], [36, 36], [36, 30], [37, 27], [40, 26], [41, 23], [39, 22], [37, 22], [37, 22], [38, 21],
+  [39, 20], [42, 19], [44, 15], [43, 14], [41, 17], [40, 18.5], [40, 18.5], [39, 17], [38, 16], [38, 16],
+  [40, 15], [42, 12], [44, 9], [43.5, 6], [42, 3], [40, 0], [37, -1], [36.5, -6], [37, -9], [39, -9.5],
+  [43, -9], [43.5, -2], [46, -1], [48, -5], [49, 0], [51, 2], [53, 5], [54, 8], [57, 8], [57, 10],
+  [56, 11], [54, 11], [54, 14], [54, 20], [57, 21], [59, 24], [60, 30], [61, 22], [64, 22], [66, 24],
+  [64, 21], [60, 18], [58, 16], [56, 14], [58, 11], [59, 10], [58, 7], [62, 5], [69, 14],
 ];
 const AUSTRALIA: Outline = [
   [-12, 131], [-12, 136], [-16, 141], [-11, 143], [-19, 147], [-27, 153], [-33, 152], [-38, 147],
@@ -76,6 +81,18 @@ const LANDS: readonly Land[] = [
   { outline: [[5, 96], [-1, 100], [-6, 106], [-7, 113], [-3, 116], [1, 111], [-1, 104], [3, 101]] },
   { outline: [[65, -20], [66, -14], [64, -14], [63, -22]] },
   { outline: [[22, -78], [20, -74], [21, -84], [23, -82]] },
+  // Mediterranean islands: Sicily, Sardinia, Corsica, Crete, Cyprus.
+  { outline: [[38.2, 12.4], [38.2, 15.6], [36.7, 15.2], [37.2, 12.6]] },
+  { outline: [[41.2, 8.4], [41.2, 9.7], [39, 9.6], [39, 8.5]] },
+  { outline: [[43, 9], [43, 9.5], [41.5, 9.3], [41.5, 8.7]] },
+  { outline: [[35.6, 23.5], [35.6, 26.3], [34.9, 26.1], [35, 23.6]] },
+  { outline: [[35.6, 32.3], [35.6, 34.5], [34.7, 33.6], [34.8, 32.4]] },
+];
+
+// Inland seas painted back over the land so the Europe/Middle-East silhouette keeps its gaps.
+const SEAS: readonly Land[] = [
+  { outline: [[41.2, 28], [43, 28], [45.5, 33], [45, 37], [43, 40.5], [41, 41.5], [41, 36], [41, 29.5]] },
+  { outline: [[47, 48], [46.5, 52], [42, 51], [38, 52], [37, 53.5], [40.5, 54], [45, 52.5], [47.5, 50]] },
 ];
 
 // Deserts are inset blobs so the coast stays green/sandy around them.
@@ -182,6 +199,10 @@ export function paintEarth(ctx: CanvasRenderingContext2D, width: number, height:
   fillOutlines(ctx, DESERTS, width, height, () => DESERT);
   ctx.restore();
 
+  strokeOutlines(ctx, SEAS, width, height, SAND, 4 * unit);
+  strokeOutlines(ctx, SEAS, width, height, INK, 2 * unit);
+  fillOutlines(ctx, SEAS, width, height, () => OCEAN_SHALLOW);
+
   // Polar cap: Antarctica is an outline above; the north gets a soft ice ring.
   const cap = ctx.createLinearGradient(0, 0, 0, (16 / 180) * height);
   cap.addColorStop(0, ICE);
@@ -202,6 +223,10 @@ export function paintClouds(ctx: CanvasRenderingContext2D, width: number, height
     const y = height * (0.12 + rng.next() * 0.76);
     const r = (14 + rng.next() * 22) * unit;
     const alpha = 0.32 + rng.next() * 0.22;
+    // Keep the Europe/Mediterranean pin cluster cloud-free so Paris/Rome/Berlin read on land.
+    const lon = (x / width) * 360 - 180;
+    const lat = 90 - (y / height) * 180;
+    if (lat > 28 && lat < 66 && lon > -16 && lon < 46) continue;
     for (let puffIndex = 0; puffIndex < 3; puffIndex += 1) {
       const px = x + (rng.next() - 0.5) * r * 2.2;
       const py = y + (rng.next() - 0.5) * r * 0.6;

@@ -41,8 +41,25 @@ const VISIBLE_DOT = 0.12;
 /** Cities closer than this (degrees, great-circle-ish) fan their labels apart instead of stacking. */
 const CLUSTER_DEG = 16;
 /** Labels whose screen centres sit closer than this many CSS px collapse to the higher-priority pin. */
-const LABEL_COLLAPSE_PX = 78;
 const LABEL_LIFT = 0.9;
+const LABEL_ROW_PX = 40;
+
+/** Viewports where the globe is small on screen (phones, landscape touch): smaller labels, wider fan-out. */
+export function isCompactViewport(width: number, height: number): boolean {
+  return width < 720 || height < 480;
+}
+
+/** Extra world-unit fan-out for small viewports so labels don't all collapse onto Europe. */
+export function labelLiftScale(width: number, height: number): number {
+  const shortest = Math.min(width, height * 1.4);
+  return Math.min(1.8, Math.max(1, 720 / Math.max(1, shortest)));
+}
+
+export function estimateLabelWidthPx(label: string, compact: boolean): number {
+  const fontPx = compact ? 12 : 15;
+  const padX = compact ? 10 : 14;
+  return label.length * fontPx * 0.68 + padX * 2 + 6;
+}
 
 const INK = '#211333';
 const CREAM = '#fff5e9';
@@ -93,7 +110,8 @@ export function markerFacing(markerWorld: Vector3, cameraPosition: Vector3): num
  * Per-city label offset in the pin's tangent plane (local x right, y up, in globe units). Cities inside a
  * cluster push away from the cluster centroid so three European labels read as three, not one stack.
  */
-export function labelOffsets(cities: readonly GlobeCity[]): Map<CityId, readonly [number, number]> {
+export function labelOffsets(cities: readonly GlobeCity[], liftScale = 1): Map<CityId, readonly [number, number]> {
+  const lift = LABEL_LIFT * liftScale;
   const result = new Map<CityId, readonly [number, number]>();
   for (const city of cities) {
     let sumLat = 0;
@@ -109,14 +127,14 @@ export function labelOffsets(cities: readonly GlobeCity[]): Map<CityId, readonly
       }
     }
     if (count <= 1) {
-      result.set(city.id, [0, LABEL_LIFT]);
+      result.set(city.id, [0, lift]);
       continue;
     }
     const awayLat = city.latDeg - sumLat / count;
     const awayLon = (city.lonDeg - sumLon / count) * Math.cos((city.latDeg * Math.PI) / 180);
     const length = Math.hypot(awayLat, awayLon) || 1;
     // Local +x is east, +y is north on the outward-facing pin frame.
-    result.set(city.id, [(awayLon / length) * LABEL_LIFT * 0.9, (awayLat / length) * LABEL_LIFT * 0.9 + 0.6]);
+    result.set(city.id, [(awayLon / length) * lift * 0.9, (awayLat / length) * lift * 0.9 + 0.6 * liftScale]);
   }
   return result;
 }
@@ -230,7 +248,13 @@ export function GlobeScene({ cities, interactive, onSelectCity, quality = 'stand
   const [collapsedIds, setCollapsedIds] = useState<readonly CityId[]>([]);
   const collapsedRef = useRef<readonly CityId[]>([]);
   const size = useThree((state) => state.size);
-  const offsets = useMemo(() => labelOffsets(cities), [cities]);
+  const compact = isCompactViewport(size.width, size.height);
+  const liftScale = labelLiftScale(size.width, size.height);
+  const offsets = useMemo(() => labelOffsets(cities, liftScale), [cities, liftScale]);
+  const labelWidths = useMemo(
+    () => new Map(cities.map((city) => [city.id, estimateLabelWidthPx(city.label, compact)] as const)),
+    [cities, compact],
+  );
   const [travellingState, setTravellingState] = useState(false);
   const travellingRef = useRef(false);
 
@@ -329,7 +353,8 @@ export function GlobeScene({ cities, interactive, onSelectCity, quality = 'stand
         if (!otherActive && j > i) continue;
         const dx = pin.screen.x - other.screen.x;
         const dy = pin.screen.y - other.screen.y;
-        if (Math.abs(dx) < LABEL_COLLAPSE_PX && Math.abs(dy) < LABEL_COLLAPSE_PX * 0.45) {
+        const reach = ((labelWidths.get(pin.city.id) ?? 80) + (labelWidths.get(other.city.id) ?? 80)) / 2;
+        if (Math.abs(dx) < reach && Math.abs(dy) < LABEL_ROW_PX) {
           nextCollapsed.push(pin.city.id);
           break;
         }
@@ -448,14 +473,14 @@ export function GlobeScene({ cities, interactive, onSelectCity, quality = 'stand
                     setHoveredId(null);
                   }}
                   style={{
-                    font: '800 15px/1 system-ui, sans-serif',
+                    font: `800 ${compact ? 12 : 15}px/1 system-ui, sans-serif`,
                     letterSpacing: '0.03em',
                     textTransform: 'uppercase',
                     color: INK,
                     background: active ? YELLOW : CREAM,
                     border: `3px solid ${INK}`,
                     borderRadius: 8,
-                    padding: '10px 14px',
+                    padding: compact ? '8px 10px' : '10px 14px',
                     minHeight: 44,
                     minWidth: 44,
                     cursor: interactive ? 'pointer' : 'default',
