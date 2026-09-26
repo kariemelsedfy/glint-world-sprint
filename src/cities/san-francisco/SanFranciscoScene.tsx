@@ -38,10 +38,10 @@ import type { Rng } from '@/shared/seed';
 // ---------------------------------------------------------------------------
 
 const UNIT_BOX = new BoxGeometry(1, 1, 1);
-const UNIT_CYLINDER = new CylinderGeometry(0.5, 0.5, 1, 6);
-const UNIT_SPHERE = new SphereGeometry(1, 7, 5);
+const UNIT_CYLINDER = new CylinderGeometry(0.5, 0.5, 1, 5);
+const UNIT_SPHERE = new SphereGeometry(1, 6, 4);
 const UNIT_PLANE = new PlaneGeometry(1, 1);
-const SOCKET_RING = new RingGeometry(1.7, 2.3, 20);
+const SOCKET_RING = new RingGeometry(1.7, 2.3, 12);
 const WHITE = new MeshLambertMaterial({ color: '#ffffff' });
 const HAZE_MATERIAL = new MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.42, depthWrite: false });
 
@@ -63,7 +63,7 @@ const WATER_TONE = '#35b9dd';
 const WATER_DEEP_TONE = '#2593b8';
 const FOAM_TONE = '#c8f2fb';
 const HAZE_TONE = '#dcd3f0';
-const HAZE_BANDS = ['#cbbfe8', '#c9cdef', '#c3dcf3', '#bfe4f5'] as const;
+const HAZE_BANDS = ['#cbbfe8', '#c6d4f1', '#bfe4f5'] as const;
 const STRAIT_MIN_Z = -62;
 const STRAIT_MAX_Z = -28;
 const HILL_TONES = ['#c7b4ea', '#b6a1e8', '#a48fdc'] as const;
@@ -272,14 +272,20 @@ function buildStreets(definition: CityDefinition, quality: Quality, batches: Bat
             { minX: road.maxX, maxX: road.maxX + 1.4, minZ: road.minZ, maxZ: road.maxZ },
           ];
       for (const strip of strips) batches.flats.push(flatItem(strip, 0.016, SIDEWALK_TONE));
+      // One continuous white kerb per side, with a red painted segment every 30 units.
       const length = horizontal ? width(road) : depth(road);
-      for (let along = 0; along < length; along += 6) {
-        const paint = Math.floor(along / 6) % 5 === 0 ? CURB_RED : CURB_WHITE;
-        for (const side of [-1, 1] as const) {
-          const item: InstanceItem = horizontal
-            ? { x: road.minX + along + 3, y: 0.15, z: centerZ(road) + side * (depth(road) / 2 + 0.15), sx: 5.6, sy: 0.3, sz: 0.3, color: paint }
-            : { x: centerX(road) + side * (width(road) / 2 + 0.15), y: 0.15, z: road.minZ + along + 3, sx: 0.3, sy: 0.3, sz: 5.6, color: paint };
-          batches.boxes.push(item);
+      for (const side of [-1, 1] as const) {
+        batches.boxes.push(
+          horizontal
+            ? { x: centerX(road), y: 0.15, z: centerZ(road) + side * (depth(road) / 2 + 0.15), sx: length, sy: 0.3, sz: 0.3, color: CURB_WHITE }
+            : { x: centerX(road) + side * (width(road) / 2 + 0.15), y: 0.15, z: centerZ(road), sx: 0.3, sy: 0.3, sz: length, color: CURB_WHITE },
+        );
+        for (let along = 0; along < length; along += 30) {
+          batches.boxes.push(
+            horizontal
+              ? { x: road.minX + along + 3, y: 0.16, z: centerZ(road) + side * (depth(road) / 2 + 0.15), sx: 5.6, sy: 0.32, sz: 0.32, color: CURB_RED }
+              : { x: centerX(road) + side * (width(road) / 2 + 0.15), y: 0.16, z: road.minZ + along + 3, sx: 0.32, sy: 0.32, sz: 5.6, color: CURB_RED },
+          );
         }
       }
     }
@@ -303,13 +309,13 @@ function buildStreets(definition: CityDefinition, quality: Quality, batches: Bat
       for (const b of roads) {
         if (width(b) >= depth(b)) continue;
         for (const edgeZ of [a.minZ, a.maxZ]) {
-          for (let x = b.minX + 0.6; x < b.maxX - 0.4; x += 1.2) {
-            batches.flats.push({ x: x + 0.3, y: 0.032, z: edgeZ + (edgeZ === a.minZ ? 1.2 : -1.2), sx: 0.6, sy: 1.8, sz: 1, rx: FLAT, color: CREAM });
+          for (let x = b.minX + 0.6; x < b.maxX - 0.4; x += 2.4) {
+            batches.flats.push({ x: x + 0.5, y: 0.032, z: edgeZ + (edgeZ === a.minZ ? 1.2 : -1.2), sx: 1.0, sy: 1.8, sz: 1, rx: FLAT, color: CREAM });
           }
         }
         for (const edgeX of [b.minX, b.maxX]) {
-          for (let z = a.minZ + 0.6; z < a.maxZ - 0.4; z += 1.2) {
-            batches.flats.push({ x: edgeX + (edgeX === b.minX ? 1.2 : -1.2), y: 0.032, z: z + 0.3, sx: 1.8, sy: 0.6, sz: 1, rx: FLAT, color: CREAM });
+          for (let z = a.minZ + 0.6; z < a.maxZ - 0.4; z += 2.4) {
+            batches.flats.push({ x: edgeX + (edgeX === b.minX ? 1.2 : -1.2), y: 0.032, z: z + 0.5, sx: 1.8, sy: 1.0, sz: 1, rx: FLAT, color: CREAM });
           }
         }
       }
@@ -326,7 +332,7 @@ function buildStreets(definition: CityDefinition, quality: Quality, batches: Bat
   if (quality === 'low') return;
   const wireY = 6.2;
   const poleX = width(mainStreet) / 2 + 0.7;
-  for (let z = mainStreet.minZ + 4; z < mainStreet.maxZ; z += 10) {
+  for (let z = mainStreet.minZ + 4; z < mainStreet.maxZ; z += 14) {
     const clear = [-1, 1].every((side) => {
       const x = centerX(mainStreet) + side * poleX;
       if (definition.blockers.some((b) => contains(grow(b, 1), x, z))) return false;
@@ -407,7 +413,7 @@ function buildBackground(definition: CityDefinition, rng: Rng, quality: Quality,
   batches.flats.push(flatItem({ minX: -FAR, maxX: bounds.minX, minZ: STRAIT_MIN_Z, maxZ: STRAIT_MAX_Z }, -0.3, WATER_TONE));
 
   // Tiny pastel houses climbing the hills, plus stepped streets between them.
-  const houseCount = quality === 'low' ? 30 : 90;
+  const houseCount = quality === 'low' ? 14 : 40;
   for (let index = 0; index < houseCount; index += 1) {
     const west = rng.next() < 0.55;
     const x = west ? bounds.minX - 3 - rng.next() * 40 : bounds.minX + rng.next() * width(bounds);
@@ -418,7 +424,7 @@ function buildBackground(definition: CityDefinition, rng: Rng, quality: Quality,
     const h = 3 + rng.next() * 3;
     const w = 3 + rng.next() * 2;
     batches.boxes.push({ x, y: tierHeight - 0.3 + h / 2, z, sx: w, sy: h, sz: w, color: rng.pick(HILL_HOUSE_TONES) });
-    batches.boxes.push({ x, y: tierHeight - 0.3 + h + 0.35, z, sx: w * 0.8, sy: 0.7, sz: w * 0.8, color: rng.pick(ROOF_TONES) });
+    if (quality !== 'low') batches.boxes.push({ x, y: tierHeight - 0.3 + h + 0.35, z, sx: w * 0.8, sy: 0.7, sz: w * 0.8, color: rng.pick(ROOF_TONES) });
   }
   for (let z = STRAIT_MAX_Z + 14; z < 120; z += 24) {
     batches.boxes.push({ x: bounds.minX - 22, y: 4, z, sx: 44, sy: 8.5, sz: 3, color: DECK_TONE });
@@ -429,12 +435,13 @@ function buildBackground(definition: CityDefinition, rng: Rng, quality: Quality,
   // setting is touched; this is just a handful of instanced translucent slabs.
   const straitZ = (STRAIT_MIN_Z + STRAIT_MAX_Z) / 2;
   HAZE_BANDS.forEach((tone, index) => {
-    const y = 4 + index * 5;
-    batches.haze.push({ x: 0, y, z: -FAR + 30 + index * 10, sx: FAR * 2.2, sy: 10, sz: 1, color: tone });
-    batches.haze.push({ x: FAR - 30 - index * 10, y, z: 0, sx: 1, sy: 10, sz: FAR * 2.2, color: tone });
-    batches.haze.push({ x: -FAR + 40 + index * 12, y, z: straitZ, sx: 1, sy: 10, sz: 90, color: tone });
+    if (quality === 'low' && index > 0) return;
+    const y = 4 + index * 6;
+    batches.haze.push({ x: 0, y, z: -FAR + 30 + index * 10, sx: FAR * 2.2, sy: 12, sz: 1, color: tone });
+    batches.haze.push({ x: FAR - 30 - index * 10, y, z: 0, sx: 1, sy: 12, sz: FAR * 2.2, color: tone });
+    batches.haze.push({ x: -FAR + 40 + index * 12, y, z: straitZ, sx: 1, sy: 12, sz: 90, color: tone });
   });
-  const bankCount = quality === 'low' ? 4 : 9;
+  const bankCount = quality === 'low' ? 3 : 6;
   for (let index = 0; index < bankCount; index += 1) {
     const t = index / bankCount;
     const x = bounds.minX - 8 - t * 120;
@@ -442,8 +449,8 @@ function buildBackground(definition: CityDefinition, rng: Rng, quality: Quality,
     batches.haze.push({ x, y: 1.6 + (index % 3) * 1.1, z: straitZ + drift, sx: 26 + (index % 4) * 6, sy: 2.6 + (index % 2) * 1.4, sz: 12 + (index % 3) * 4, color: index % 2 ? HAZE_TONE : CREAM });
   }
   if (quality !== 'low') {
-    for (const x of [-96, -112, -126]) {
-      batches.haze.push({ x, y: 12, z: straitZ, sx: 14, sy: 9, sz: 40, color: HAZE_BANDS[2] });
+    for (const x of [-98, -124]) {
+      batches.haze.push({ x, y: 12, z: straitZ, sx: 16, sy: 9, sz: 40, color: HAZE_BANDS[2] });
     }
   }
 }
@@ -477,7 +484,7 @@ function buildGoldenGate(approach: Blocker, quality: Quality, batches: Batches):
     const z = cz + side * (DECK_HALF_DEPTH + 4.5);
     batches.boxes.push({ x: approach.maxX - 6, y: 2.9, z, sx: 3, sy: 3.4, sz: 3, color: CREAM });
     batches.boxes.push({ x: approach.maxX - 6, y: 4.9, z, sx: 4, sy: 0.6, sz: 4, color: ORANGE });
-    for (const x of [approach.minX + 4, approach.maxX - 14, approach.maxX - 2.5]) {
+    for (const x of [approach.minX + 4, approach.maxX - 8]) {
       batches.cylinders.push({ x, y: 2.2, z: z + side * 3, sx: 0.6, sy: 2, sz: 0.6, color: TRUNK_TONE });
       batches.spheres.push({ x, y: 4.6, z: z + side * 3, sx: 1.4, sy: 2.6, sz: 1.4, color: LEAF_TONES[1] });
     }
@@ -533,7 +540,7 @@ function buildGoldenGate(approach: Blocker, quality: Quality, batches: Batches):
   }
   // Deck lamps along both railings, and a tug pushing through the strait under the span.
   if (quality !== 'low') {
-    for (let x = approach.minX - 6; x > DECK_END_X + 4; x -= 12) {
+    for (let x = approach.minX - 6; x > DECK_END_X + 4; x -= 24) {
       for (const side of [-1, 1] as const) {
         const z = cz + side * (DECK_HALF_DEPTH + 0.3);
         batches.cylinders.push({ x, y: DECK_Y + 1.6, z, sx: 0.14, sy: 2.2, sz: 0.14, color: LAMP_POST_TONE });
@@ -555,7 +562,7 @@ function buildGoldenGate(approach: Blocker, quality: Quality, batches: Batches):
     { x0: eastTowerX, y0: topY + 1.2, x1: WEST_TOWER_X, y1: topY - 0.3, sag: 11 },
     { x0: WEST_TOWER_X, y0: topY - 0.3, x1: DECK_END_X - 4, y1: DECK_Y, sag: 0 },
   ];
-  const segments = quality === 'low' ? 6 : 12;
+  const segments = quality === 'low' ? 5 : 8;
   for (const side of [-1, 1] as const) {
     const z = cz + side * (DECK_HALF_DEPTH + 0.6);
     for (const span of spans) {
@@ -571,6 +578,7 @@ function buildGoldenGate(approach: Blocker, quality: Quality, batches: Batches):
       }
       if (quality === 'low' || span.sag === 0) continue;
       for (let index = 1; index < points.length - 1; index += 1) {
+        if (index % 2 === 0) continue;
         const [px, py, pz] = points[index]!;
         batches.boxes.push({ x: px, y: (py + DECK_Y) / 2, z: pz, sx: 0.16, sy: py - DECK_Y, sz: 0.16, color: CABLE_TONE });
       }
@@ -648,9 +656,8 @@ function buildVictorianRow(block: Blocker, rng: Rng, quality: Quality, batches: 
       batches.boxes.push({ x: body.minX + 1.0, y: 3.25, z: body.maxZ + 0.55, sx: 1.6, sy: 0.12, sz: 1.1, rx: 0.35, color: rng.next() < 0.5 ? HOT_PINK : CYAN });
     }
     for (let y = 2.4; y < height - 1.4; y += 2.6) {
-      batches.boxes.push({ x: bayX, y: y + 0.8, z: body.maxZ + 1.02, sx: bayWidth - 0.8, sy: 1.4, sz: 0.08, color: GLASS_TONE });
-      batches.boxes.push({ x: bayX - bayWidth / 2 - 0.02, y: y + 0.8, z: body.maxZ + 0.5, sx: 0.08, sy: 1.4, sz: 0.6, color: GLASS_TONE });
-      batches.boxes.push({ x: bayX + bayWidth / 2 + 0.02, y: y + 0.8, z: body.maxZ + 0.5, sx: 0.08, sy: 1.4, sz: 0.6, color: GLASS_TONE });
+      // One glass box slightly wider than the bay so it shows on the front and both cheeks.
+      batches.boxes.push({ x: bayX, y: y + 0.8, z: body.maxZ + 0.7, sx: bayWidth + 0.04, sy: 1.4, sz: 0.64, color: GLASS_TONE });
       if (index === 0) batches.boxes.push({ x: body.minX - 0.04, y: y + 0.8, z: centerZ(body), sx: 0.08, sy: 1.4, sz: 1.0, color: GLASS_TONE });
       if (index === count - 1) batches.boxes.push({ x: body.maxX + 0.04, y: y + 0.8, z: centerZ(body), sx: 0.08, sy: 1.4, sz: 1.0, color: GLASS_TONE });
     }
@@ -659,7 +666,7 @@ function buildVictorianRow(block: Blocker, rng: Rng, quality: Quality, batches: 
     for (const cx of [body.minX + 0.15, body.maxX - 0.15]) {
       batches.boxes.push({ x: cx, y: height / 2, z: body.maxZ + 0.06, sx: 0.3, sy: height, sz: 0.12, color: trim });
     }
-    for (let bx = body.minX + 0.6; bx < body.maxX - 0.3; bx += 1.1) {
+    for (let bx = body.minX + 0.6; bx < body.maxX - 0.3; bx += 2.2) {
       batches.boxes.push({ x: bx, y: height - 0.3, z: body.maxZ + 0.3, sx: 0.25, sy: 0.5, sz: 0.5, color: trim });
     }
     if (rng.next() < 0.6) {
@@ -675,8 +682,7 @@ function buildVictorianRow(block: Blocker, rng: Rng, quality: Quality, batches: 
     batches.boxes.push({ x: body.minX + 1.0, y: 3.25, z: body.maxZ + 0.7, sx: 1.9, sy: 0.14, sz: 1.1, color: trim });
     const flower = rng.pick([HOT_PINK, YELLOW, CYAN, '#ff8a5b'] as const);
     for (let y = 2.4; y < height - 1.4; y += 2.6) {
-      batches.boxes.push({ x: bayX, y: y + 0.02, z: body.maxZ + 1.1, sx: bayWidth - 0.6, sy: 0.22, sz: 0.3, color: POST_TONE });
-      batches.boxes.push({ x: bayX, y: y + 0.22, z: body.maxZ + 1.1, sx: bayWidth - 0.7, sy: 0.18, sz: 0.24, color: flower });
+      batches.boxes.push({ x: bayX, y: y + 0.18, z: body.maxZ + 1.1, sx: bayWidth - 0.6, sy: 0.36, sz: 0.3, color: flower });
     }
     if (rng.next() < 0.45) {
       const by = height - 1.9;
@@ -684,7 +690,7 @@ function buildVictorianRow(block: Blocker, rng: Rng, quality: Quality, batches: 
       const bx = body.maxX - bw / 2 - 0.2;
       batches.boxes.push({ x: bx, y: by, z: body.maxZ + 0.5, sx: bw, sy: 0.16, sz: 1.0, color: trim });
       batches.boxes.push({ x: bx, y: by + 0.55, z: body.maxZ + 0.98, sx: bw, sy: 0.06, sz: 0.06, color: INK });
-      for (let rx = bx - bw / 2 + 0.15; rx <= bx + bw / 2; rx += 0.35) {
+      for (let rx = bx - bw / 2 + 0.15; rx <= bx + bw / 2; rx += 0.8) {
         batches.boxes.push({ x: rx, y: by + 0.3, z: body.maxZ + 0.98, sx: 0.05, sy: 0.55, sz: 0.05, color: INK });
       }
     }
@@ -782,9 +788,8 @@ function buildWharfSheds(block: Blocker, quality: Quality, batches: Batches): vo
   batches.boxes.push({ x: centerX(block), y: 7.6, z: block.maxZ + 1.45, sx: 5.6, sy: 1.0, sz: 0.1, color: HOT_PINK });
   batches.boxes.push({ x: centerX(block), y: 8.9, z: block.maxZ + 1.2, sx: 7.4, sy: 0.3, sz: 0.6, color: INK });
   if (quality === 'low') return;
-  for (let x = block.minX + 1; x <= block.maxX - 1; x += 3) {
+  for (let x = block.minX + 1; x <= block.maxX - 1; x += 6) {
     batches.cylinders.push({ x, y: 0.45, z: block.maxZ - 0.5, sx: 0.5, sy: 0.9, sz: 0.5, color: INK });
-    batches.cylinders.push({ x, y: 0.45, z: block.minZ + 0.5, sx: 0.5, sy: 0.9, sz: 0.5, color: INK });
   }
   for (const [cx, cz, h] of [[block.minX + 1.2, centerZ(block) + 1.6, 1.4], [block.minX + 2.6, centerZ(block) + 1.6, 0.9], [block.maxX - 1.5, centerZ(block) - 1.6, 1.2]] as const) {
     batches.boxes.push({ x: cx, y: h / 2, z: cz, sx: 1.2, sy: h, sz: 1.2, color: PLANK_TONE });
@@ -801,7 +806,7 @@ function buildWharfSheds(block: Blocker, quality: Quality, batches: Batches): vo
   const signX = centerX(block);
   const signY = 8.9;
   for (const corner of [block.minX + 0.6, block.maxX - 0.6]) {
-    const steps = 8;
+    const steps = 4;
     for (let index = 0; index <= steps; index += 1) {
       const t = index / steps;
       const x = signX + (corner - signX) * t;
@@ -901,7 +906,7 @@ function buildBayPier(block: Blocker, quality: Quality, batches: Batches): void 
 
 function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batches: Batches): void {
   const placed: [number, number][] = [];
-  const target = quality === 'low' ? 16 : 44;
+  const target = quality === 'low' ? 12 : 28;
   const { bounds } = definition;
   for (let attempt = 0; attempt < target * 8 && placed.length < target; attempt += 1) {
     const x = bounds.minX + rng.next() * width(bounds);
@@ -918,7 +923,7 @@ function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batc
   for (const road of definition.roads) {
     const horizontal = width(road) >= depth(road);
     if (!horizontal) continue;
-    for (let along = 9; along < width(road); along += 18) {
+    for (let along = 9; along < width(road); along += 27) {
       for (const side of [-1, 1] as const) {
         const x = road.minX + along;
         const z = centerZ(road) + side * (depth(road) / 2 + 0.8);
@@ -947,9 +952,9 @@ const FOAM_BARS: readonly InstanceItem[] = [
   { x: -84, y: -0.2, z: -32, sx: 10, sy: 0.5, sz: 1, rx: FLAT, color: FOAM_TONE },
 ];
 
-const RIPPLE_BARS: readonly InstanceItem[] = Array.from({ length: 28 }, (_, index) => {
-  const row = Math.floor(index / 7);
-  const col = index % 7;
+const RIPPLE_BARS: readonly InstanceItem[] = Array.from({ length: 16 }, (_, index) => {
+  const row = Math.floor(index / 4);
+  const col = (index % 4) * 2;
   const inStrait = row >= 2;
   return {
     x: inStrait ? -80 - col * 12 - (row % 2) * 6 : -110 + col * 38 + (row % 2) * 12,
@@ -959,7 +964,7 @@ const RIPPLE_BARS: readonly InstanceItem[] = Array.from({ length: 28 }, (_, inde
     sy: 0.35,
     sz: 1,
     rx: FLAT,
-    color: col % 2 ? WATER_DEEP_TONE : FOAM_TONE,
+    color: index % 2 ? WATER_DEEP_TONE : FOAM_TONE,
   };
 });
 
