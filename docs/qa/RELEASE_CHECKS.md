@@ -45,6 +45,20 @@ Release check failed (9):
 
 (Message wording was tidied afterwards to "forbidden file (…)" / "credential-shaped string (…)"; the rules are unchanged.) Re-running `package:itch` then `check:release` on the real build passed.
 
+## Results on five-city `main` @ `0235448`
+
+```
+Wrote release/glint-world-sprint-itch.zip (16 files, 1166.7 KiB)
+ZIP        1.14 MiB (16 files) budget 25.00 MiB
+SHA-256    631c3b32fc762961c6142bd42993d9a03006dbc2aa113963026aa1923528f729
+JS         1.13 MiB raw, 328.1 KiB gzip -9 (budget 1.46 MiB / 400.0 KiB)
+CSS        10.9 KiB gzip -9 (budget 40.0 KiB)
+Scanned    3 text files in the ZIP, 263 tracked source files
+Release check passed.
+```
+
+JS is at 77 % of its raw budget and 82 % of its gzip budget; the font and photos are binary assets and are covered by the per-file and ZIP budgets only.
+
 ## Results on integrated `main` @ `656af1d`
 
 ```

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { ENTRY_PENALTY_MS, HINT_COST_MS } from '@/shared/contracts';
 import {
+  city,
   closeMap,
   collectPageErrors,
   flyTo,
@@ -117,7 +118,7 @@ test('pause marks practice; hiding the tab mid-travel pauses travel and marks pr
   const clock = hud(page);
   await expect(clock.practice).toBeHidden();
 
-  await page.getByRole('button', { name: `Fly to ${first.cityId === 'paris' ? 'Paris' : 'Giza'}` }).click();
+  await page.getByRole('button', { name: `Fly to ${city(first.cityId).label}` }).click();
   await expect(page.getByText('Travelling…')).toBeVisible();
   await setTabHidden(page, true);
   await expect(page.getByRole('heading', { name: 'Paused' })).toBeVisible();

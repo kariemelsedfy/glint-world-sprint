@@ -1,6 +1,28 @@
 # Performance measurements (integrated build)
 
-Measured on 2026-09-26 against integrated `main` @ `656af1d` (A5 production UI plus the A2 globe, A3 Paris and A4 Giza performance passes). The A7 branch that recorded these numbers changes only `tests/e2e/` and `docs/qa/`, so the measured game is `656af1d` unmodified. Environment as in `README.md`: headless Chromium 131 with **SwiftShader software WebGL** on a GPU-less Apple M4 VM, 1280×720, DPR 1, default settings (`quality: 'standard'`). These are automated software-rendering numbers, **not** a real-device benchmark.
+## Five-city `main` @ `0235448` (current)
+
+Measured 2026-09-26 ~17:09 UTC, same VM and method as below except the host was busier (load ~15 on 12 vCPU reported by the browser; other VM services running, no artificial load). One run only. SwiftShader software WebGL, **not** a device benchmark.
+
+| Item | Measured |
+|---|---|
+| JS (single chunk) | 1,188,860 B raw, 337,002 B gzip (default level); `check:release`: 1.13 MiB raw, 328.1 KiB gzip -9 vs 1.46 MiB / 400 KiB budget |
+| CSS | 59,713 B raw, 11,249 B gzip; `check:release`: 10.9 KiB gzip -9 vs 40 KiB budget |
+| Other assets | Anton font 170,812 B; 12 collectible photos (JPEG) 27,484–90,687 B each, 772,854 B total |
+| ZIP | 1,194,651 B (1.14 MiB), 16 files, `index.html` at root; SHA-256 `631c3b32fc762961c6142bd42993d9a03006dbc2aa113963026aa1923528f729` (manifest commit `a727f58`, clean tree; digest changes on every rebuild) |
+| Menu ready | 889 ms local preview (DCL 53 ms); 1,454 ms throttled 9 Mbit/s / 60 ms RTT (DCL 792 ms); 520,700 B transferred |
+
+| Scene | Frames / 5 s | Mean | Median | p95 | Max | Mean FPS | >25 ms | >40 ms |
+|---|---|---|---|---|---|---|---|---|
+| Menu | 298 | 16.83 ms | 16.7 ms | 16.8 ms | 66.6 ms | 59.4 | 1 | 1 |
+| Globe | 301 | 16.67 ms | 16.7 ms | 16.7 ms | 16.8 ms | 60.0 | 0 | 0 |
+| Paris | 131 | 38.42 ms | 33.4 ms | 66.6 ms | 133.4 ms | 26.0 | 110 | 47 |
+
+Reading: menu and globe hold 60 Hz under SwiftShader on this run; Paris is the expensive scene at ~26 fps with p95 66.6 ms, well above the 25 ms desktop target in software rendering (A0 measured 1.67 fps on a busier box). Rome, San Francisco, Berlin and Giza are not sampled by `perf.spec.ts`. Real-GPU numbers are still required (below).
+
+## Earlier: `main` @ `656af1d` (superseded)
+
+The rest of this page was measured on 2026-09-26 against integrated `main` @ `656af1d` (A5 production UI plus the A2 globe, A3 Paris and A4 Giza performance passes). The A7 branch that recorded these numbers changes only `tests/e2e/` and `docs/qa/`, so the measured game is `656af1d` unmodified. Environment as in `README.md`: headless Chromium 131 with **SwiftShader software WebGL** on a GPU-less Apple M4 VM, 1280×720, DPR 1, default settings (`quality: 'standard'`). These are automated software-rendering numbers, **not** a real-device benchmark.
 
 The earlier graybox numbers (base `47d365b`: JS 995.88 kB, ZIP 277.3 KiB, median 16.7 ms everywhere) are superseded by this page; they are kept in git history only.
 

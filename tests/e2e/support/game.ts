@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
+import { MAX_FRAME_DT } from '@/game/simulate';
 import { PICKUP_RADIUS, PLAYER_RADIUS, PLAYER_SPEED } from '@/shared/contracts';
 import type { CityId, LevelId, RectXZ, TargetId } from '@/shared/contracts';
 
@@ -47,12 +48,15 @@ let cached: Oracle | null = null;
  * scene modules, and duplicating the seeded resolver here would hide regressions.
  */
 export function oracle(): Oracle {
-  if (cached) return cached;
+  cached ??= JSON.parse(runSupportScript('print-objectives.ts')) as Oracle;
+  return cached;
+}
+
+/** Runs a `tests/e2e/support/` script under vite-node and returns its stdout. */
+export function runSupportScript(name: string): string {
   const root = resolve(import.meta.dirname, '..', '..', '..');
   const bin = resolve(root, 'node_modules', '.bin', process.platform === 'win32' ? 'vite-node.cmd' : 'vite-node');
-  const json = execFileSync(bin, ['tests/e2e/support/print-objectives.ts'], { cwd: root, encoding: 'utf8' });
-  cached = JSON.parse(json) as Oracle;
-  return cached;
+  return execFileSync(bin, [`tests/e2e/support/${name}`], { cwd: root, encoding: 'utf8' });
 }
 
 export function level(id: LevelId): OracleLevel {
@@ -324,11 +328,12 @@ const MAX_ARRIVAL_TOLERANCE = 2.1;
 const MAX_CARRY = 6;
 /** Stop walking this far inside the pickup radius so the collector's own frame sees the overlap. */
 const PICKUP_MARGIN = 0.5;
+/** Floor for the walking deadline; walkToAndCollect stretches it for long routes at very slow frame rates. */
 const WALK_DEADLINE_MS = 300_000;
+/** Deadline headroom over the route's pure walking time: map reads, re-plans and corrections. */
+const WALK_DEADLINE_FACTOR = 4;
 const COLLECT_POLL_MS = 20_000;
 const MAX_HOLD_MS = 8_000;
-/** Mirrors the Player's frame-delta clamp (1/20 s): slower frames move less per wall-clock second. */
-const PLAYER_MAX_FRAME_S = 1 / 20;
 const MIN_PROGRESS = 0.15;
 const MAX_STALLS = 8;
 
@@ -355,11 +360,22 @@ export async function measureFrameMs(page: Page, frames = 6): Promise<number> {
 
 function expectedUnitsPerMs(frameMs: number): number {
   const frameS = Math.max(frameMs, 1) / 1000;
-  return (PLAYER_SPEED * Math.min(frameS, PLAYER_MAX_FRAME_S)) / frameS / 1000;
+  return (PLAYER_SPEED * Math.min(frameS, MAX_FRAME_DT)) / frameS / 1000;
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function routeLengthFrom(from: readonly [number, number], cityId: CityId, target: readonly [number, number]): number {
+  let length = 0;
+  const cursor: [number, number] = [from[0], from[1]];
+  for (const leg of planRoute(cityId, from, target)) {
+    const index = leg.axis === 'x' ? 0 : 1;
+    length += Math.abs(leg.value - cursor[index]);
+    cursor[index] = leg.value;
+  }
+  return length;
 }
 
 function along(position: readonly [number, number], axis: Leg['axis']): number {
@@ -378,9 +394,11 @@ function along(position: readonly [number, number], axis: Leg['axis']): number {
 export async function walkToAndCollect(page: Page, objective: OracleObjective): Promise<void> {
   const cityId = objective.cityId;
   const target = objective.position;
-  const deadline = Date.now() + WALK_DEADLINE_MS;
+  const started = Date.now();
   let frameMs = await measureFrameMs(page);
   let rate = expectedUnitsPerMs(frameMs);
+  const routeLength = routeLengthFrom(await readPlayer(page, cityId), cityId, target);
+  const deadline = started + Math.max(WALK_DEADLINE_MS, (WALK_DEADLINE_FACTOR * routeLength) / rate);
   let carry = 0;
   let legs: Leg[] | null = null;
   let pending: { axis: Leg['axis']; from: number; sign: number; ms: number; wanted: number } | null = null;
