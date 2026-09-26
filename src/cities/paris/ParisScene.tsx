@@ -22,7 +22,6 @@ import {
   Object3D,
   PlaneGeometry,
   Quaternion,
-  RingGeometry,
   SphereGeometry,
   Vector3,
 } from 'three';
@@ -39,14 +38,16 @@ import type { Rng } from '@/shared/seed';
  * Bakes a chunky "toy" face shading into a geometry's vertex colours: top faces bright, front
  * faces mid, sides darker. Instance colours multiply on top, so one material serves every batch.
  */
-function bakeFaceShading<G extends BufferGeometry>(geometry: G): G {
+function bakeFaceShading<G extends BufferGeometry>(geometry: G, flat = false): G {
   const normal = geometry.getAttribute('normal');
   const shade = new Float32Array(normal.count * 3);
   for (let index = 0; index < normal.count; index += 1) {
     const ny = normal.getY(index);
     const nz = normal.getZ(index);
     const nx = normal.getX(index);
-    const factor = 0.74 + 0.26 * Math.max(0, ny) + 0.1 * Math.max(0, nz) + 0.04 * Math.max(0, nx) - 0.18 * Math.max(0, -ny);
+    const factor = flat
+      ? 1
+      : 0.86 + 0.14 * Math.max(0, ny) + 0.08 * Math.max(0, nz) + 0.04 * Math.max(0, nx) - 0.2 * Math.max(0, -ny);
     shade[index * 3] = factor;
     shade[index * 3 + 1] = factor;
     shade[index * 3 + 2] = factor;
@@ -62,8 +63,7 @@ const UNIT_SPHERE = bakeFaceShading(new SphereGeometry(1, 7, 5));
 const SQUARE_CONE = bakeFaceShading(new ConeGeometry(Math.SQRT1_2, 1, 4).rotateY(Math.PI / 4));
 /** Square frustum, unit footprint at the base, 0.55 at the top (mansard roofs, Eiffel shaft). */
 const FRUSTUM = bakeFaceShading(new CylinderGeometry(0.55 * Math.SQRT1_2, Math.SQRT1_2, 1, 4).rotateY(Math.PI / 4));
-const UNIT_PLANE = bakeFaceShading(new PlaneGeometry(1, 1));
-const SOCKET_RING = bakeFaceShading(new RingGeometry(1.7, 2.3, 20));
+const UNIT_PLANE = bakeFaceShading(new PlaneGeometry(1, 1), true);
 
 /** Single material shared by every instanced batch: vertex shading x instance colour. */
 const WHITE = new MeshLambertMaterial({ color: '#ffffff', vertexColors: true });
@@ -90,7 +90,7 @@ const SOCKET_PAD_TONE = YELLOW;
 const SOCKET_DISC_TONE = LAVENDER;
 const SHADOW_TONE = '#8b7fa8';
 const STONE_TONES = [CREAM, '#f9e8d3', '#ffeedd', '#f5dfc6', '#fbefe0', '#f6e6d8'] as const;
-const ROOF_TONES = ['#3b2a5a', '#4a3670', '#2f2148', '#52417a', DEEP_PURPLE] as const;
+const ROOF_TONES = ['#4b3a78', '#5a4590', '#3f2f66', '#6a52a8', DEEP_PURPLE] as const;
 const LEAF_TONES = ['#63c47a', '#4fb56b', '#7ed48c', '#3fa864', '#8fd97a'] as const;
 const BACKDROP_TONES = ['#c9b8f0', LAVENDER, '#a893dc', '#d5c8f4'] as const;
 const PLINTH_TONE = '#d9c6b0';
@@ -385,7 +385,6 @@ interface Batches {
   readonly cones: InstanceItem[];
   readonly frustums: InstanceItem[];
   readonly flats: InstanceItem[];
-  readonly rings: InstanceItem[];
 }
 
 function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batches: Batches): void {
@@ -578,20 +577,21 @@ function buildCafe(landmark: Landmark, quality: Quality, batches: Batches): void
 function buildBackdrop(bounds: RectXZ, rng: Rng, quality: Quality, batches: Batches): void {
   const step = quality === 'low' ? 16 : 9;
   const ring = grow(bounds, 9);
-  const push = (x: number, z: number) => {
+  const push = (x: number, z: number, tall: boolean) => {
     const w = 5 + rng.next() * 5;
-    const h = 4 + rng.next() * 9;
+    const h = tall ? 4 + rng.next() * 9 : 2 + rng.next() * 3;
     const color = rng.pick(BACKDROP_TONES);
     batches.boxes.push({ x, y: h / 2, z, sx: w, sy: h, sz: w, color });
     if (quality !== 'low') batches.frustums.push({ x, y: h + 0.8, z, sx: w + 0.4, sy: 1.6, sz: w + 0.4, color: '#8f7cc4' });
   };
   for (let x = ring.minX; x <= ring.maxX; x += step) {
-    push(x + (rng.next() - 0.5) * 3, ring.minZ - rng.next() * 4);
-    push(x + (rng.next() - 0.5) * 3, ring.maxZ + rng.next() * 4);
+    push(x + (rng.next() - 0.5) * 3, ring.minZ - rng.next() * 4, true);
+    // The camera sits at +Z, so the south ring is foreground: keep it low so it frames, not hides.
+    push(x + (rng.next() - 0.5) * 3, ring.maxZ + rng.next() * 4, false);
   }
   for (let z = ring.minZ + step; z < ring.maxZ; z += step) {
-    push(ring.minX - rng.next() * 4, z + (rng.next() - 0.5) * 3);
-    push(ring.maxX + rng.next() * 4, z + (rng.next() - 0.5) * 3);
+    push(ring.minX - rng.next() * 4, z + (rng.next() - 0.5) * 3, true);
+    push(ring.maxX + rng.next() * 4, z + (rng.next() - 0.5) * 3, true);
   }
   batches.flats.push(flatItem(grow(bounds, 40), -0.02, '#d9cff2'));
 }
@@ -605,7 +605,7 @@ export function ParisScene({ definition, seed, quality }: CitySceneProps) {
 
   const layout = useMemo(() => {
     const rng = createRng(hashSeed('paris-cosmetic', seed));
-    const batches: Batches = { boxes: [], cylinders: [], spheres: [], cones: [], frustums: [], flats: [], rings: [] };
+    const batches: Batches = { boxes: [], cylinders: [], spheres: [], cones: [], frustums: [], flats: [] };
     const landmarkIds = new Set(landmarks.map((landmark) => landmark.id));
     const riverSegments = blockers.filter((blocker) => blocker.id.startsWith('river'));
     const facadeBlocks = blockers.filter((blocker) => !landmarkIds.has(blocker.id) && !blocker.id.startsWith('river'));
@@ -669,9 +669,10 @@ export function ParisScene({ definition, seed, quality }: CitySceneProps) {
 
     for (const socket of sockets) {
       const [x, , z] = socket.position;
+      // Socket pad: lavender apron, yellow ring, cream centre — three stacked discs, one batch.
       batches.cylinders.push({ x, y: 0.03, z, sx: 5.2, sy: 0.06, sz: 5.2, color: SOCKET_DISC_TONE });
-      batches.cylinders.push({ x, y: 0.07, z, sx: 2.6, sy: 0.02, sz: 2.6, color: CREAM });
-      batches.rings.push({ x, y: 0.09, z, sx: 1, sy: 1, sz: 1, rx: FLAT, color: SOCKET_PAD_TONE });
+      batches.cylinders.push({ x, y: 0.08, z, sx: 4.4, sy: 0.04, sz: 4.4, color: SOCKET_PAD_TONE });
+      batches.cylinders.push({ x, y: 0.11, z, sx: 3.2, sy: 0.02, sz: 3.2, color: CREAM });
     }
 
     for (const batch of Object.values(batches)) batch.sort(byTopDescending);
@@ -686,7 +687,6 @@ export function ParisScene({ definition, seed, quality }: CitySceneProps) {
       <Instances geometry={SQUARE_CONE} items={layout.cones} />
       <Instances geometry={UNIT_CYLINDER} items={layout.cylinders} />
       <Instances geometry={UNIT_SPHERE} items={layout.spheres} />
-      <Instances geometry={SOCKET_RING} items={layout.rings} />
     </group>
   );
 }
