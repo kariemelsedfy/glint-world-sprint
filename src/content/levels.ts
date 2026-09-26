@@ -29,6 +29,30 @@ export const LEVELS: readonly LevelDefinition[] = [
     targetIds: ['paris-crescent', 'giza-beetle'],
     medalSeconds: { gold: 90, silver: 135, bronze: 210 },
   },
+  {
+    id: 'twin-capitals',
+    title: 'Twin Capitals',
+    version: 1,
+    seed: 2026092604,
+    targetIds: ['rome-arena', 'berlin-gate'],
+    medalSeconds: { gold: 90, silver: 135, bronze: 210 },
+  },
+  {
+    id: 'bay-and-forum',
+    title: 'Bay & Forum',
+    version: 1,
+    seed: 2026092605,
+    targetIds: ['sf-bridge', 'rome-laurel'],
+    medalSeconds: { gold: 90, silver: 135, bronze: 210 },
+  },
+  {
+    id: 'wall-and-bay',
+    title: 'Wall & Bay',
+    version: 1,
+    seed: 2026092606,
+    targetIds: ['berlin-tower', 'sf-cable-car'],
+    medalSeconds: { gold: 90, silver: 135, bronze: 210 },
+  },
 ];
 
 export const DEFAULT_LEVEL_ID: LevelId = 'icons';

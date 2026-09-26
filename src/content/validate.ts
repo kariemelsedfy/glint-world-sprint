@@ -366,7 +366,9 @@ export function validateLevel(level: LevelDefinition, definitions: readonly Targ
   const report = reporter(issues, 'level', level.id);
   if (!Number.isInteger(level.seed) || level.seed < 0 || level.seed > 0xffffffff) report('error', 'seed is not unsigned 32-bit');
   if (!Number.isInteger(level.version) || level.version < 1) report('error', 'version must be a positive integer');
-  if (level.targetIds.length !== 2) report('error', `P0 trial must have exactly two targets, has ${level.targetIds.length}`);
+  if (level.targetIds.length < 2 || level.targetIds.length > 3) {
+    report('error', `trial must have two or three targets, has ${level.targetIds.length}`);
+  }
   if (new Set(level.targetIds).size !== level.targetIds.length) report('error', 'repeats a target');
   const cities = new Set<CityId>();
   for (const targetId of level.targetIds) {
@@ -374,7 +376,7 @@ export function validateLevel(level: LevelDefinition, definitions: readonly Targ
     if (!target) report('error', `unknown target ${targetId}`);
     else cities.add(target.cityId);
   }
-  if (!(cities.has('paris') && cities.has('giza'))) report('error', 'trial must span both Paris and Giza');
+  if (cities.size < 2) report('error', 'trial must span at least two cities');
   const { gold, silver, bronze } = level.medalSeconds;
   if (!(gold > 0 && gold < silver && silver < bronze)) report('error', 'medal thresholds must strictly increase');
   return issues;

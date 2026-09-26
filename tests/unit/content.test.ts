@@ -24,6 +24,18 @@ const KNOWN_WARNINGS: readonly string[] = [
   'warning [city] giza/sphinx-c: fine patch spills outside broad region of sphinx',
   'warning [city] giza/market-a: fine patch spills outside broad region of market',
   'warning [city] giza/market-c: fine patch spills outside broad region of market',
+  'warning [city] rome/arena-c: fine patch spills outside broad region of arena',
+  'warning [city] rome/trastevere-a: fine patch spills outside broad region of trastevere',
+  'warning [city] rome/trastevere-c: fine patch spills outside broad region of trastevere',
+  'warning [city] san-francisco/bridge-c: only 2.0u from blocker bridge-approach (prefer 3)',
+  'warning [city] san-francisco/bridge-c: fine patch spills outside broad region of bridge',
+  'warning [city] san-francisco/cable-c: fine patch spills outside broad region of cable',
+  'warning [city] san-francisco/wharf-a: fine patch spills outside broad region of wharf',
+  'warning [city] san-francisco/wharf-b: only 2.0u from blocker wharf-sheds (prefer 3)',
+  'warning [city] berlin/gate-c: fine patch spills outside broad region of gate',
+  'warning [city] berlin/tower-c: fine patch spills outside broad region of tower',
+  'warning [city] berlin/gallery-a: fine patch spills outside broad region of gallery',
+  'warning [city] berlin/gallery-c: fine patch spills outside broad region of gallery',
   'warning [target] giza-crown: socket pyramid-b is 14.0u from landmark great-pyramid; keep tier-3 wording honest',
 ];
 
@@ -32,6 +44,9 @@ const GOLDEN: Readonly<Record<string, readonly string[]>> = {
   icons: ['louvre-c', 'pyramid-b'],
   'sky-sun': ['tower-a', 'sphinx-a'],
   'small-wonders': ['cafe-c', 'market-b'],
+  'twin-capitals': ['arena-a', 'gate-c'],
+  'bay-and-forum': ['bridge-a', 'piazza-a'],
+  'wall-and-bay': ['tower-b', 'cable-b'],
 };
 
 function mockCity(overrides: Partial<CityDefinition> = {}): CityDefinition {
@@ -130,16 +145,16 @@ describe('shipped content', () => {
     }
   });
 
-  it('spans both cities in each of three trials using six distinct targets', () => {
-    expect(LEVELS).toHaveLength(3);
+  it('spans two cities in each trial and uses every shipped target exactly once', () => {
+    expect(LEVELS).toHaveLength(6);
     const seen = new Set<string>();
     for (const level of LEVELS) {
       const cities = new Set(resolveObjectives(level, TARGETS).map((objective) => objective.cityId));
-      expect([...cities].sort()).toEqual(['giza', 'paris']);
+      expect(cities.size, level.id).toBe(2);
       for (const id of level.targetIds) seen.add(id);
     }
-    expect(seen.size).toBe(6);
-    expect(new Set(LEVELS.map((level) => level.seed)).size).toBe(3);
+    expect(seen.size).toBe(TARGETS.length);
+    expect(new Set(LEVELS.map((level) => level.seed)).size).toBe(LEVELS.length);
   });
 
   it('escalates hints: city, then district or landmark name, then a longer fine-patch description', () => {
@@ -229,7 +244,7 @@ describe('validator catches unfair or unreachable placements', () => {
   it('rejects trials that stay in one city or reuse targets', () => {
     const oneCity: LevelDefinition = { ...mockLevel, targetIds: ['paris-smile', 'paris-iron'] };
     const issues = formatIssues(validateContent([oneCity], TARGETS, getCity));
-    expect(issues).toContain('trial must span both Paris and Giza');
+    expect(issues).toContain('trial must span at least two cities');
 
     const reused = formatIssues(validateContent([LEVELS[0]!, { ...LEVELS[1]!, targetIds: ['paris-smile', 'giza-guardian'] }], TARGETS, getCity));
     expect(reused).toContain('reuses paris-smile from icons');

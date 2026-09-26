@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 112" width="112" height="112" role="img" aria-label="Scarab">
+  <rect width="112" height="112" rx="14" fill="#123F55"/>
+  <rect x="5" y="5" width="102" height="102" rx="10" fill="none" stroke="#211333" stroke-width="6"/>
+  <g fill="#49D2E0" stroke="#49D2E0" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M56 20c12 0 20 10 20 24s-8 34-20 34-20-20-20-34 8-24 20-24z M28 46h16M68 46h16M28 66h16M68 66h16"/>
+  </g>
+</svg>

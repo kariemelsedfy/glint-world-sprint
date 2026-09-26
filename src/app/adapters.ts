@@ -13,6 +13,7 @@ import type {
   UIModel,
 } from '@/shared/contracts';
 import { getCity, listCities } from '@/cities';
+import { getTargetImage } from '@/assets/targetImages';
 import { LEVELS, getTarget } from '@/content';
 import type { RunState } from '@/state/store';
 import { adjustedMs } from '@/state/store';
@@ -39,6 +40,8 @@ function cardFor(state: RunState, targetId: TargetId): ObjectiveCardVM {
         ? null
         : `${HINT_LABELS[nextTier - 1]} (+${HINT_COST_MS[nextTier - 1]! / 1000}s)`,
     nextHintCostMs: nextTier === null || collected ? null : HINT_COST_MS[nextTier - 1]!,
+    imageUrl: getTargetImage(targetId).url,
+    imageAlt: getTargetImage(targetId).alt,
   };
 }
 

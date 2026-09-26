@@ -14,12 +14,17 @@ export const ENTRY_PENALTY_MS = 5_000;
 export const HINT_COST_MS = [10_000, 20_000, 35_000] as const;
 export const FINE_SEARCH_RADIUS = 12;
 
-export type CityId = 'paris' | 'giza';
+export type CityId = 'paris' | 'giza' | 'rome' | 'san-francisco' | 'berlin';
 export type LocationId = 'globe' | CityId;
 export type TargetId =
   | 'paris-smile' | 'paris-iron' | 'paris-crescent'
-  | 'giza-crown' | 'giza-guardian' | 'giza-beetle';
-export type LevelId = 'icons' | 'sky-sun' | 'small-wonders';
+  | 'giza-crown' | 'giza-guardian' | 'giza-beetle'
+  | 'rome-arena' | 'rome-laurel'
+  | 'sf-cable-car' | 'sf-bridge'
+  | 'berlin-gate' | 'berlin-tower';
+export type LevelId =
+  | 'icons' | 'sky-sun' | 'small-wonders'
+  | 'twin-capitals' | 'bay-and-forum' | 'wall-and-bay';
 export type HintTier = 0 | 1 | 2 | 3;
 export type PaidHintTier = 1 | 2 | 3;
 export type Quality = 'low' | 'standard';
@@ -49,7 +54,9 @@ export interface Landmark {
   readonly label: string;
   readonly center: Vec2;
   readonly footprint: RectXZ;
-  readonly silhouette: 'tower' | 'pyramid' | 'museum' | 'sphinx' | 'cafe' | 'market';
+  readonly silhouette:
+    | 'tower' | 'pyramid' | 'museum' | 'sphinx' | 'cafe' | 'market'
+    | 'colosseum' | 'fountain' | 'bridge' | 'cable-car' | 'gate' | 'tv-tower';
 }
 export interface SpawnSocket {
   readonly id: string;
@@ -81,7 +88,9 @@ export interface TargetDefinition {
   readonly clueTitle: string;
   readonly clueText: string;
   readonly revealName: string;
-  readonly iconKind: 'portrait' | 'tower-token' | 'croissant' | 'pyramidion' | 'sun-medallion' | 'scarab';
+  readonly iconKind:
+    | 'portrait' | 'tower-token' | 'croissant' | 'pyramidion' | 'sun-medallion' | 'scarab'
+    | 'arena-token' | 'laurel' | 'cable-car-model' | 'bridge-postcard' | 'gate-miniature' | 'tv-tower-souvenir';
   readonly hintText: readonly [city: string, district: string, nearby: string];
   readonly socketIds: readonly string[];
 }
@@ -155,6 +164,9 @@ export interface ObjectiveCardVM {
   readonly purchasedHints: readonly string[];
   readonly nextHintLabel: string | null;
   readonly nextHintCostMs: number | null;
+  /** Resolved URL of the target's photo, from the A1-owned image registry. */
+  readonly imageUrl: string;
+  readonly imageAlt: string;
 }
 export type MapLandmarkVM = Omit<Landmark, 'label'> & {
   /** Null until the corresponding tier-2 hint permits the proper name. */

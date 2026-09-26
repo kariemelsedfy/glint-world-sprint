@@ -54,10 +54,10 @@ describe('objective resolution', () => {
     }
   });
 
-  it('covers both cities in every P0 trial', () => {
+  it('covers two cities in every trial', () => {
     for (const level of LEVELS) {
       const cities = new Set(resolveObjectives(level, TARGETS).map((objective) => objective.cityId));
-      expect([...cities].sort()).toEqual(['giza', 'paris']);
+      expect(cities.size, level.id).toBe(2);
     }
   });
 });

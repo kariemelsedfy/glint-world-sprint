@@ -19,6 +19,12 @@ const SILHOUETTE_HEIGHT: Record<string, number> = {
   sphinx: 9,
   cafe: 8,
   market: 7,
+  colosseum: 22,
+  fountain: 9,
+  bridge: 30,
+  'cable-car': 10,
+  gate: 18,
+  'tv-tower': 40,
 };
 
 export function CityScenery({ definition }: CitySceneProps) {
