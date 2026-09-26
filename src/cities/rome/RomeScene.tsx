@@ -54,7 +54,7 @@ const ATTIC_FLOOR = new RingGeometry(0.42, 0.5, 24, 1, 0, ATTIC_SWEEP);
 
 const WHITE = new MeshLambertMaterial({ color: '#ffffff' });
 const WHITE_DOUBLE = new MeshLambertMaterial({ color: '#ffffff', side: DoubleSide });
-const TRAVERTINE_MATERIAL = new MeshLambertMaterial({ color: '#e9d4ad', side: DoubleSide });
+const ATTIC_MATERIAL = new MeshLambertMaterial({ color: '#cdb489', side: DoubleSide });
 
 const GROUND_TONE = '#d9c4a3';
 const COBBLE_TONE = '#b7a88d';
@@ -248,10 +248,10 @@ function buildHouses(houses: readonly House[], rng: Rng, quality: Quality, batch
     const eaves = grow(rect, 0.5);
     batches.roofs.push({
       x: centerX(eaves),
-      y: height + 1.1,
+      y: height + 0.9,
       z: centerZ(eaves),
       sx: width(eaves),
-      sy: 2.2,
+      sy: 1.8,
       sz: depth(eaves),
       ry: Math.PI / 4,
       color: roof,
@@ -344,7 +344,11 @@ function buildTrattoria(landmark: Landmark, quality: Quality, batches: Batches):
 
 const TIER_HEIGHT = 5;
 const TIER_COUNT = 3;
-const ATTIC_HEIGHT = 3.6;
+const ATTIC_HEIGHT = 4.6;
+/** XZ point on the surviving attic arc; matches ColosseumAttic's mesh rotations. */
+function atticPoint(cx: number, cz: number, ax: number, az: number, angle: number): readonly [number, number] {
+  return [cx + Math.cos(angle) * ax, cz - Math.sin(angle) * az];
+}
 const PILLAR_COUNT = 30;
 
 function buildColosseum(landmark: Landmark, quality: Quality, batches: Batches): void {
@@ -388,12 +392,22 @@ function buildColosseum(landmark: Landmark, quality: Quality, batches: Batches):
   const ax = rx - TIER_COUNT * 0.7;
   const az = rz - TIER_COUNT * 0.7;
   batches.tierFloors.push({ x: cx, y: atticY0 + 0.02, z: cz, sx: ax * 2, sy: az * 2, sz: 1, rx: FLAT, color: TRAVERTINE_DARK });
+  // Light cornice band along the top of the surviving wall, and jagged rubble at its broken ends.
+  for (const angle of [0.04, ATTIC_SWEEP - 0.04]) {
+    const [wx, wz] = atticPoint(cx, cz, ax - 0.6, az - 0.6, angle);
+    batches.boxes.push({ x: wx, y: atticY0 + 0.9, z: wz, sx: 1.8, sy: 1.8, sz: 1.8, ry: -angle, color: TRAVERTINE_DARK });
+    batches.boxes.push({ x: wx, y: atticY0 + 2.2, z: wz, sx: 1.2, sy: 0.9, sz: 1.2, ry: -angle + 0.4, color: TRAVERTINE });
+  }
   if (quality === 'low') return;
-  // Rubble at the broken ends of the wall.
-  for (const angle of [0.05, ATTIC_SWEEP - 0.05]) {
-    const wx = cx + Math.cos(angle) * (ax - 0.5);
-    const wz = cz - Math.sin(angle) * (az - 0.5);
-    batches.boxes.push({ x: wx, y: atticY0 + 0.7, z: wz, sx: 1.6, sy: 1.4, sz: 1.6, ry: angle, color: TRAVERTINE_DARK });
+  const pilasters = 16;
+  for (let index = 0; index <= pilasters; index += 1) {
+    const angle = (index / pilasters) * ATTIC_SWEEP;
+    const [px, pz] = atticPoint(cx, cz, ax + 0.15, az + 0.15, angle);
+    batches.boxes.push({ x: px, y: atticY0 + ATTIC_HEIGHT / 2, z: pz, sx: 0.9, sy: ATTIC_HEIGHT, sz: 0.9, ry: -angle, color: TRAVERTINE_LIGHT });
+    if (index < pilasters) {
+      const [wx, wz] = atticPoint(cx, cz, ax + 0.1, az + 0.1, angle + ATTIC_SWEEP / pilasters / 2);
+      batches.boxes.push({ x: wx, y: atticY0 + 2.4, z: wz, sx: 0.9, sy: 1.4, sz: 0.9, ry: -angle, color: ARCH_SHADOW });
+    }
   }
 }
 
@@ -405,21 +419,22 @@ function ColosseumAttic({ landmark }: { readonly landmark: Landmark }) {
   const rx = width(footprint) / 2 - 0.6 - TIER_COUNT * 0.7;
   const rz = depth(footprint) / 2 - 2.4 - TIER_COUNT * 0.7;
   const y0 = 0.7 + TIER_COUNT * TIER_HEIGHT;
-  // CylinderGeometry sweeps theta from +Z toward +X; RingGeometry sweeps from +X toward +Y (flattened to -Z).
+  // CylinderGeometry sweeps theta from +Z toward +X and RingGeometry from +X toward +Y; the rotations
+  // below put both arcs on the same side, at (+cos θ, -sin θ) so the gap faces the camera — see atticPoint.
   return (
-    <group position={[cx, 0, cz]}>
+    <group position={[cx, 0, cz]} rotation={[0, Math.PI, 0]}>
       <mesh
         geometry={ATTIC_SHELL}
-        material={TRAVERTINE_MATERIAL}
+        material={ATTIC_MATERIAL}
         position={[0, y0 + ATTIC_HEIGHT / 2, 0]}
         rotation={[0, -Math.PI / 2, 0]}
         scale={[rx * 2, ATTIC_HEIGHT, rz * 2]}
       />
       <mesh
         geometry={ATTIC_FLOOR}
-        material={TRAVERTINE_MATERIAL}
+        material={ATTIC_MATERIAL}
         position={[0, y0 + ATTIC_HEIGHT + 0.02, 0]}
-        rotation={[FLAT, 0, 0]}
+        rotation={[FLAT, 0, Math.PI]}
         scale={[rx * 2, rz * 2, 1]}
       />
     </group>
