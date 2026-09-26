@@ -1,0 +1,54 @@
+@import 'tailwindcss';
+
+:root {
+  --glint-navy: #12253b;
+  --glint-ocean: #24b8e8;
+  --glint-gold: #ffc857;
+  --glint-mint: #78d896;
+  --glint-cream: #fff6e5;
+  --glint-coral: #ff655b;
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--glint-navy);
+  font-family: ui-rounded, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+canvas {
+  display: block;
+  touch-action: none;
+}
+
+.glint-button {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 2px solid var(--glint-navy);
+  background: var(--glint-gold);
+  color: var(--glint-navy);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.glint-button:hover {
+  filter: brightness(1.05);
+}
+
+.glint-button:focus-visible {
+  outline: 3px solid var(--glint-ocean);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

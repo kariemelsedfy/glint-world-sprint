@@ -60,3 +60,22 @@ Touch targets are at least 44 CSS px. Mobile portrait may display a rotate-to-la
 The reference union lists events to standardize worker conversations; A1 may implement actions wrapping those events. `TICK_ACTIVE` is emitted by the clock, not from arbitrary UI. `COLLECT` is emitted by validated player/pickup logic. `TRAVEL_*` comes only through A0's current transition callbacks. Pause and travel behavior must pass the tests in QA_AND_PLAYTEST.md.
 
 Every acceptance check that changes these contracts is recorded in the relevant agent status and reviewed by A0 before merging. No separate schemas for AI Studio and runtime: the UI export is adapted to this contract.
+
+## Bootstrap adoption (A0, CONTRACT_READY)
+
+`src/shared/contracts.ts` is now the authoritative copy; `contracts/game.ts` is a superseded snapshot that must not be imported. No interface was changed during adoption.
+
+Worker entry points established by the bootstrap:
+
+| Export | Path | Owner after CONTRACT_READY |
+|---|---|---|
+| `useRunStore`, `dispatch(GameEvent)` | `src/state/store.ts` | A1 |
+| `InputProvider`, `getMoveAxis`, `setTouchAxis` | `src/game/input.tsx` | A1 |
+| `GlobeScene`, `TravelDirector` | `src/world/` | A2 |
+| `ParisScene` | `src/cities/paris/ParisScene.tsx` | A3 |
+| `GizaScene` | `src/cities/giza/GizaScene.tsx` | A4 |
+| `GameUI({ model, actions })` | `src/ui/GameUI.tsx` | A5 |
+| `resolveObjectives(level, definitions)` | `src/content/resolveObjectives.ts` | A6 |
+| `getCity(id)`, `getCityModule(id)`, `listCities()` | `src/cities/index.ts` | A0 |
+
+A0 keeps ownership of `src/app/` (single Canvas, single camera authority in `SceneHost.tsx`, view-model adapter in `adapters.ts`), root configuration and the lockfile.

@@ -1,7 +1,8 @@
 /**
- * SUPERSEDED SNAPSHOT — do not edit and do not import.
- * A0 adopted this file as src/shared/contracts.ts, which is now authoritative.
- * Kept only as the historical v1 reference.
+ * GLINT contract v1. Authoritative source of shared types and constants.
+ * Adopted by A0 from contracts/game.ts, which is now a superseded snapshot.
+ * Owner: A0. Plain data only — no React or Three.js imports.
+ * Interface changes go through A0 and are recorded in docs/CONTRACTS.md.
  */
 export const RULES_VERSION = 1;
 export const CITY_HALF_EXTENT = 72;
