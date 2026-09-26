@@ -35,4 +35,6 @@ await hold('KeyS', 4000);
 await page.screenshot({ path: `${out}/05-wharf.png` });
 await hold('KeyD', 3500);
 await page.screenshot({ path: `${out}/06-pier.png` });
+await hold('KeyW', 7000);
+await page.screenshot({ path: `${out}/07-hill-terrace.png` });
 await browser.close();
