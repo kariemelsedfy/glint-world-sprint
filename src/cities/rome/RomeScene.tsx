@@ -74,6 +74,10 @@ const COBBLE_DARK = '#ab9d83';
 const COBBLE_LIGHT = '#bfb095';
 const GRASS_TONE = '#7fa35a';
 const FOAM_TONE = '#dff7ff';
+const SEAT_TONES = ['#e3cda6', '#d6bd93'] as const;
+const IVY_TONE = '#4f8a45';
+const FLOWER_TONES = ['#f43fab', '#ffd963', '#ff8a5b'] as const;
+const RAILING_TONE = '#2b2530';
 const SHUTTER_TONE = '#3f6b4f';
 const WINDOW_TONE = '#3a2a3f';
 const TRIM_TONE = '#f9ecd6';
@@ -289,13 +293,33 @@ function buildHouses(houses: readonly House[], rng: Rng, quality: Quality, batch
         batches.cylinders.push({ x, y: 2.6, z: frontZ, sx: 1.6, sy: 0.12, sz: 1.6, rx: Math.PI / 2, color: ARCH_SHADOW });
       }
     }
-    // Windows with shutters on upper floors, on every outer face except -Z.
+    // A wooden door in the middle arch and ivy climbing one corner of the front.
+    if (rect.maxZ >= outer.maxZ - 0.01) {
+      const doorX = rect.minX + 1.6 + Math.floor(Math.max(0, (width(rect) - 3.2) / 3.2) / 2) * 3.2;
+      batches.boxes.push({ x: doorX, y: 1.1, z: frontZ + 0.02, sx: 1.2, sy: 2.2, sz: 0.1, color: TRUNK_TONE });
+      if (rng.next() < 0.45) {
+        const ivyX = rng.next() < 0.5 ? rect.minX + 0.8 : rect.maxX - 0.8;
+        batches.flats.push({ x: ivyX, y: height * 0.45, z: frontZ + 0.03, sx: 1.4, sy: height * 0.8, sz: 1, color: IVY_TONE });
+        batches.flats.push({ x: ivyX + (ivyX < centerX(rect) ? 0.9 : -0.9), y: height * 0.7, z: frontZ + 0.03, sx: 1.0, sy: height * 0.35, sz: 1, color: IVY_TONE });
+      }
+    }
+    // Windows with shutters on upper floors, on every outer face except -Z; some get a balcony.
+    let floor = 0;
     for (let y = 4.4; y <= height - 1.2; y += 2.8) {
+      floor += 1;
       if (rect.maxZ >= outer.maxZ - 0.01) {
         for (let x = rect.minX + 1.6; x <= rect.maxX - 1.6; x += 3.2) {
           batches.boxes.push({ x, y, z: frontZ, sx: 1.0, sy: 1.5, sz: 0.1, color: WINDOW_TONE });
           batches.boxes.push({ x: x - 0.75, y, z: frontZ, sx: 0.4, sy: 1.5, sz: 0.14, color: SHUTTER_TONE });
           batches.boxes.push({ x: x + 0.75, y, z: frontZ, sx: 0.4, sy: 1.5, sz: 0.14, color: SHUTTER_TONE });
+          if (floor === 1 && rng.next() < 0.5) {
+            // Balcony: stone slab, iron railing, flower box.
+            batches.boxes.push({ x, y: y - 0.85, z: frontZ + 0.45, sx: 2.2, sy: 0.16, sz: 0.9, color: TRIM_TONE });
+            batches.boxes.push({ x, y: y - 0.35, z: frontZ + 0.88, sx: 2.2, sy: 0.9, sz: 0.06, color: RAILING_TONE });
+            batches.boxes.push({ x, y: y + 0.12, z: frontZ + 0.88, sx: 2.3, sy: 0.06, sz: 0.06, color: RAILING_TONE });
+            batches.spheres.push({ x: x - 0.6, y: y + 0.2, z: frontZ + 0.8, sx: 0.28, sy: 0.24, sz: 0.28, color: rng.pick(FLOWER_TONES) });
+            batches.spheres.push({ x: x + 0.6, y: y + 0.2, z: frontZ + 0.8, sx: 0.28, sy: 0.24, sz: 0.28, color: rng.pick(FLOWER_TONES) });
+          }
         }
       }
       for (const side of [-1, 1] as const) {
@@ -400,6 +424,23 @@ function buildColosseum(landmark: Landmark, quality: Quality, batches: Batches):
   // Arena floor and low inner wall.
   batches.cylinders.push({ x: cx, y: plinthHeight + 0.15, z: cz, sx: rx * 1.25, sy: 0.3, sz: rz * 1.25, color: ARENA_SAND });
   batches.shells.push({ x: cx, y: plinthHeight + 1.4, z: cz, sx: rx * 1.25, sy: 2.8, sz: rz * 1.25, color: TRAVERTINE_DARK });
+  // Hypogeum: two dark trenches cut through the arena sand.
+  batches.flats.push({ x: cx, y: plinthHeight + 0.31, z: cz, sx: rx * 1.1, sy: 1.4, sz: 1, rx: FLAT, color: ARCH_SHADOW });
+  batches.flats.push({ x: cx, y: plinthHeight + 0.31, z: cz, sx: 1.4, sy: rz * 1.1, sz: 1, rx: FLAT, color: ARCH_SHADOW });
+  // Cavea: stepped seating rings climbing from the arena wall up to the second tier floor.
+  const seatRows = quality === 'low' ? 3 : 6;
+  for (let row = 0; row < seatRows; row += 1) {
+    const t = (row + 1) / (seatRows + 1);
+    const sx = rx * 1.25 + (rx * 2 - 2.6 - rx * 1.25) * t;
+    const sz = rz * 1.25 + (rz * 2 - 2.6 - rz * 1.25) * t;
+    batches.tierFloors.push({ x: cx, y: plinthHeight + 2.8 + t * (TIER_HEIGHT * 2 - 3.2), z: cz, sx, sy: sz, sz: 1, rx: FLAT, color: SEAT_TONES[row % 2]! });
+  }
+  // Grand entrance portal on the +Z (camera-facing) side, cut through the ground tier.
+  const portalZ = cz + rz - 0.4;
+  batches.boxes.push({ x: cx, y: plinthHeight + 2.6, z: portalZ, sx: 4.2, sy: 5.2, sz: 1.6, color: TRAVERTINE_LIGHT });
+  batches.boxes.push({ x: cx, y: plinthHeight + 1.9, z: portalZ + 0.2, sx: 2.6, sy: 3.8, sz: 1.6, color: ARCH_SHADOW });
+  batches.cylinders.push({ x: cx, y: plinthHeight + 3.8, z: portalZ + 0.2, sx: 2.6, sy: 1.6, sz: 2.6, rx: Math.PI / 2, color: ARCH_SHADOW });
+  batches.boxes.push({ x: cx, y: plinthHeight + 5.5, z: portalZ, sx: 5.0, sy: 0.6, sz: 1.9, color: TRAVERTINE_LIGHT });
 
   for (let tier = 0; tier < TIER_COUNT; tier += 1) {
     const y0 = plinthHeight + tier * TIER_HEIGHT;
@@ -425,6 +466,17 @@ function buildColosseum(landmark: Landmark, quality: Quality, batches: Batches):
       batches.cylinders.push({ x: ax, y: y0 + TIER_HEIGHT - 1.55, z: az, sx: 1.9, sy: 0.5, sz: 1.9, rx: Math.PI / 2, ry: -mid, color: ARCH_SHADOW });
       batches.boxes.push({ x: ax, y: y0 + TIER_HEIGHT - 0.9, z: az, sx: 0.5, sy: 0.7, sz: 0.5, ry: -mid, color: TRAVERTINE_LIGHT });
       batches.boxes.push({ x: px, y: y0 + TIER_HEIGHT - 1.15, z: pz, sx: 1.4, sy: 0.3, sz: 1.4, ry: -angle, color: TRAVERTINE_LIGHT });
+    }
+  }
+  // Statues in the second-tier arches facing the piazza.
+  if (quality !== 'low') {
+    for (const angle of [Math.PI / 2 - 0.42, Math.PI / 2 - 0.21, Math.PI / 2 + 0.21, Math.PI / 2 + 0.42]) {
+      const sxp = cx + Math.cos(angle) * (rx - 0.7 - 0.9);
+      const szp = cz + Math.sin(angle) * (rz - 0.7 - 0.9);
+      const y0 = plinthHeight + TIER_HEIGHT;
+      batches.boxes.push({ x: sxp, y: y0 + 0.4, z: szp, sx: 1.0, sy: 0.8, sz: 1.0, ry: -angle, color: TRAVERTINE_DARK });
+      batches.boxes.push({ x: sxp, y: y0 + 1.7, z: szp, sx: 0.7, sy: 1.8, sz: 0.5, ry: -angle, color: TRAVERTINE_LIGHT });
+      batches.spheres.push({ x: sxp, y: y0 + 2.85, z: szp, sx: 0.3, sy: 0.32, sz: 0.3, color: TRAVERTINE_LIGHT });
     }
   }
   // Three shallow steps around the plinth so the base reads from ground level.
@@ -497,6 +549,9 @@ function buildFountain(landmark: Landmark, quality: Quality, batches: Batches): 
   const size = Math.min(width(footprint), depth(footprint));
   batches.flats.push(flatItem(grow(footprint, 7), 0.012, PIAZZA_TONE));
 
+  // Two shallow visual steps (flat quads, nothing solid) leading up to the balustrade.
+  batches.flats.push(flatItem(grow(footprint, 2.4), 0.03, TRAVERTINE_LIGHT));
+  batches.flats.push(flatItem(grow(footprint, 1.2), 0.04, TRAVERTINE));
   // Low balustrade exactly on the collision rectangle, with corner posts.
   batches.boxes.push(boxItem(footprint, 0, 0.5, TRAVERTINE_DARK));
   for (const x of [footprint.minX + 0.35, footprint.maxX - 0.35]) {
@@ -737,6 +792,18 @@ function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batc
       if (rng.next() < 0.4 || !isPropSafe(definition, x, z)) continue;
       cafeTable(x, z, UMBRELLA_TONES[tables % UMBRELLA_TONES.length]!, batches);
       tables += 1;
+    }
+  }
+  // Stone bollards ringing the Colosseum and fountain piazzas.
+  for (const landmark of definition.landmarks) {
+    if (landmark.silhouette === 'cafe') continue;
+    const ring = grow(landmark.footprint, landmark.silhouette === 'colosseum' ? 7 : 6);
+    for (let x = ring.minX; x <= ring.maxX + 0.01; x += (width(ring) / Math.round(width(ring) / 6))) {
+      for (const z of [ring.minZ, ring.maxZ]) {
+        if (!isPropSafe(definition, x, z)) continue;
+        batches.cylinders.push({ x, y: 0.45, z, sx: 0.5, sy: 0.9, sz: 0.5, color: TRAVERTINE_DARK });
+        batches.spheres.push({ x, y: 0.95, z, sx: 0.3, sy: 0.3, sz: 0.3, color: TRAVERTINE_LIGHT });
+      }
     }
   }
   for (const road of definition.roads) {
