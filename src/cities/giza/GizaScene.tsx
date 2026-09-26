@@ -44,6 +44,7 @@ const GOLD = '#ffd963';
 const PALM_LEAF = '#5fae62';
 const ROCK = '#c8a677';
 const INK = '#211333';
+const SAND_HAZE = '#f9dfc4';
 const SHADE = '#c48c44';
 /** Arcade palette fabrics: hot pink, cyan, action yellow, warm cream. */
 const CANOPY_COLORS = ['#f43fab', TEAL, GOLD, PLASTER] as const;
@@ -181,13 +182,17 @@ function bakeGround(b: Baker, { bounds, roads }: Pick<CityDefinition, 'bounds' |
   const positions = ground.getAttribute('position');
   const colors = new Float32Array(positions.count * 3);
   const sand = new Color(SAND);
+  const haze = new Color(SAND_HAZE);
   const tint = new Color();
+  const half = Math.max(width, depth) / 2;
   for (let i = 0; i < positions.count; i += 1) {
     const x = positions.getX(i);
     const y = positions.getY(i);
     const ripple = Math.sin(x * 0.11 + y * 0.07) * 0.5 + Math.sin(x * 0.031 - y * 0.045) * 0.5;
     const shade = 1 + ripple * 0.07 + (rng.next() - 0.5) * 0.04;
-    tint.copy(sand).multiplyScalar(shade);
+    // Sand-to-sky gradient: the far apron fades towards the hazy horizon tone.
+    const distance = Math.min(1, Math.max(0, (Math.hypot(x, y) - half * 0.8) / (half * 1.6)));
+    tint.copy(sand).multiplyScalar(shade).lerp(haze, distance * distance);
     colors[i * 3] = tint.r;
     colors[i * 3 + 1] = tint.g;
     colors[i * 3 + 2] = tint.b;
@@ -244,9 +249,53 @@ function bakePyramid(b: Baker, rect: RectXZ, height: number, low: boolean): void
   // Highlighted gold pyramidion on the top face.
   b.place(UNIT_PYRAMID, MAT.gold, [cx, height * 0.93, cz], [base * 0.14, height * 0.14, base * 0.14], [0, Math.PI / 4, 0], false);
   if (low) return;
-  // Lighter lower course and a shaded plinth so the base reads against the sand.
-  b.place(UNIT_PYRAMID, MAT.stoneLight, [cx, height * 0.18, cz], [base * 1.01, height * 0.36, base * 1.01], [0, Math.PI / 4, 0], false);
+  // Stepped stone courses (alternating tones) so the silhouette reads as masonry, plus a shaded plinth.
+  for (const [level, material] of [
+    [0.18, MAT.stoneLight],
+    [0.42, MAT.stoneDark],
+    [0.62, MAT.stoneLight],
+  ] as const) {
+    const s = 1 - level;
+    b.place(UNIT_PYRAMID, material, [cx, height * (level + s * 0.06), cz], [base * s * 1.01, height * s * 0.12, base * s * 1.01], [0, Math.PI / 4, 0], false);
+  }
   b.box(cx, 0, cz, w, 0.5, d, MAT.stoneDark, 0, false);
+  b.box(cx, 0.5, cz, w - 1, 0.3, d - 1, MAT.stoneLight, 0, false);
+}
+
+/**
+ * Flat, non-solid approach from a landmark's footprint to the nearest road: sled tracks for the
+ * quarry side, pale processional stone for the Sphinx. Purely a ground decal, never a collider.
+ */
+function bakeCauseway(b: Baker, rect: RectXZ, roads: readonly RectXZ[], tracks: boolean): void {
+  const [cx, cz] = centerOf(rect);
+  let best: { gap: number; from: number; to: number; alongX: boolean } | null = null;
+  for (const road of roads) {
+    const candidates = [
+      { gap: road.minX - rect.maxX, from: rect.maxX, to: road.minX, alongX: true },
+      { gap: rect.minX - road.maxX, from: road.maxX, to: rect.minX, alongX: true },
+      { gap: road.minZ - rect.maxZ, from: rect.maxZ, to: road.minZ, alongX: false },
+      { gap: rect.minZ - road.maxZ, from: road.maxZ, to: rect.minZ, alongX: false },
+    ];
+    for (const c of candidates) {
+      const spans = c.alongX ? cz >= road.minZ && cz <= road.maxZ : cx >= road.minX && cx <= road.maxX;
+      if (c.gap > 0 && spans && (!best || c.gap < best.gap)) best = c;
+    }
+  }
+  if (!best) return;
+  const length = best.to - best.from;
+  const mid = (best.from + best.to) / 2;
+  const at = (offset: number): Vec3 => (best.alongX ? [mid, 0.03, cz + offset] : [cx + offset, 0.03, mid]);
+  const size = (w: number): Vec3 => (best.alongX ? [length, w, 1] : [w, length, 1]);
+  if (tracks) {
+    for (const offset of [-1.1, 1.1]) b.place(UNIT_PLANE, MAT.stoneDark, at(offset), size(0.35), [-Math.PI / 2, 0, 0], false);
+    for (let t = -length / 2 + 1; t < length / 2; t += 2.5) {
+      const p: Vec3 = best.alongX ? [mid + t, 0.035, cz] : [cx, 0.035, mid + t];
+      b.place(UNIT_PLANE, MAT.stoneDark, p, best.alongX ? [0.3, 2.6, 1] : [2.6, 0.3, 1], [-Math.PI / 2, 0, 0], false);
+    }
+  } else {
+    b.place(UNIT_PLANE, MAT.stoneLight, at(0), size(4), [-Math.PI / 2, 0, 0], false);
+    for (const offset of [-2.2, 2.2]) b.place(UNIT_PLANE, MAT.stoneDark, at(offset), size(0.4), [-Math.PI / 2, 0, 0], false);
+  }
 }
 
 /**
@@ -275,12 +324,13 @@ function bakeSphinx(b: Baker, rect: RectXZ, low: boolean): void {
   b.box(legX, 0.6, paw + 1.6, 2.4, 2.1, 1.4, MAT.stoneLight);
   // chest rising to the head
   b.box(0, 0.6, chest, w * 0.4, 6.4, 3.4, MAT.sphinx);
-  // purple nemes headdress behind and beside a lighter face block
-  b.box(0, 7, chest - 1, 5, 3.8, 2.2, MAT.nemes);
-  b.box(0, 7, chest + 0.6, 2.6, 3.4, 2.4, MAT.stoneLight);
+  // purple nemes headdress behind and beside a lighter face block (oversized for silhouette)
+  b.box(0, 7, chest - 1, 6, 4.4, 2.4, MAT.nemes);
+  b.box(0, 7, chest + 0.6, 3.2, 3.8, 2.6, MAT.stoneLight);
   if (!low) {
-    // gold brow band, eyes, beard and tail
-    b.box(0, 9.6, chest + 0.4, 3.2, 0.6, 2.6, MAT.gold);
+    // gold nemes stripes, brow band, eyes, beard and tail
+    for (const sx of [-2.6, 2.6]) b.box(sx, 7.2, chest - 1, 0.5, 4, 2.6, MAT.gold, 0, false);
+    b.box(0, 10.3, chest + 0.4, 3.8, 0.6, 2.8, MAT.gold);
     b.box(-0.7, 8.4, chest + 1.75, 0.5, 0.4, 0.2, MAT.ink, 0, false);
     b.box(0.7, 8.4, chest + 1.75, 0.5, 0.4, 0.2, MAT.ink, 0, false);
     b.box(0, 5.7, chest + 1.9, 1, 1.5, 0.6, MAT.nemes);
@@ -455,19 +505,95 @@ function bakeHorizon(b: Baker, bounds: RectXZ, seed: number): void {
   }
 }
 
+/* ---------- district identity: non-solid props scattered around each search circle ---------- */
+type Circle = { readonly center: Vec2; readonly radius: number };
+
+function keepOutRects(definition: CityDefinition): RectXZ[] {
+  return [
+    ...definition.blockers.map((blocker) => inflated(blocker, 2.5)),
+    ...definition.roads.map((road) => inflated(road, 1.5)),
+    ...definition.sockets.map((socket) => ({
+      minX: socket.position[0] - 5,
+      maxX: socket.position[0] + 5,
+      minZ: socket.position[2] - 5,
+      maxZ: socket.position[2] + 5,
+    })),
+    { minX: definition.spawn[0] - 8, maxX: definition.spawn[0] + 8, minZ: definition.spawn[2] - 8, maxZ: definition.spawn[2] + 8 },
+  ];
+}
+
+/** Seeded points inside `circle`, inside bounds and outside every keep-out rect. */
+function scatterIn(circle: Circle, definition: CityDefinition, keepOut: readonly RectXZ[], rng: Rng, count: number): Vec2[] {
+  const inner = inflated(definition.bounds, -3);
+  const out: Vec2[] = [];
+  let attempts = 0;
+  while (out.length < count && attempts < count * 14) {
+    attempts += 1;
+    const angle = rng.next() * Math.PI * 2;
+    const r = Math.sqrt(rng.next()) * circle.radius;
+    const x = circle.center[0] + Math.cos(angle) * r;
+    const z = circle.center[1] + Math.sin(angle) * r;
+    if (!containsPoint(inner, x, z) || keepOut.some((rect) => containsPoint(rect, x, z))) continue;
+    out.push([x, z]);
+  }
+  return out;
+}
+
+function bakeDistricts(b: Baker, definition: CityDefinition, seed: number): void {
+  const keepOut = keepOutRects(definition);
+  for (const district of definition.districts) {
+    const rng = createRng(hashSeed(seed, definition.id, 'district', district.id));
+    const circle = district.broadSearch;
+    switch (district.id) {
+      case 'market': {
+        // Rugs laid out for sale and crates of goods.
+        for (const [x, z] of scatterIn(circle, definition, keepOut, rng, 9)) {
+          b.place(UNIT_PLANE, rng.pick(MAT.canopies), [x, 0.03, z], [2.2 + rng.next(), 1.4 + rng.next(), 1], [-Math.PI / 2, 0, rng.next() * Math.PI]);
+        }
+        for (const [x, z] of scatterIn(circle, definition, keepOut, rng, 8)) {
+          const turn = rng.next() * Math.PI;
+          b.shadow(x, z, 0.7, 0.7);
+          b.box(x, 0, z, 1, 0.9, 1, rng.pick([MAT.stoneDark, MAT.clay]), turn);
+          if (rng.next() < 0.5) b.box(x + 0.15, 0.9, z - 0.1, 0.8, 0.7, 0.8, MAT.clayLight, turn + 0.3);
+          else bakePots(b, x + 0.9, 0, z + 0.4, rng);
+        }
+        break;
+      }
+      case 'pyramids': {
+        // Quarry: dressed stone blocks waiting on the sled tracks, plus rubble (extra rocks).
+        for (const [x, z] of scatterIn(circle, definition, keepOut, rng, 7)) {
+          const turn = (rng.next() - 0.5) * 0.6;
+          b.shadow(x, z, 1.1, 0.9);
+          b.box(x, 0, z, 2, 1.1, 1.4, rng.pick([MAT.stoneLight, MAT.stone]), turn);
+          if (rng.next() < 0.4) b.box(x, 1.1, z, 1.4, 0.9, 1.1, MAT.stoneLight, turn);
+        }
+        break;
+      }
+      default: {
+        // Terrace: flagstone clusters so the plateau around the anchor reads as paved.
+        for (const [x, z] of scatterIn(circle, definition, keepOut, rng, 10)) {
+          b.place(UNIT_PLANE, rng.pick([MAT.stoneLight, MAT.path]), [x, 0.028, z], [2.4 + rng.next() * 2, 2.4 + rng.next() * 2, 1], [-Math.PI / 2, 0, rng.next() * 0.3]);
+        }
+      }
+    }
+  }
+}
+
 /* ---------- blocker → scenery dispatch ---------- */
-function bakeBlocker(b: Baker, blocker: Blocker, seed: number, low: boolean): void {
+function bakeBlocker(b: Baker, blocker: Blocker, roads: readonly RectXZ[], seed: number, low: boolean): void {
   switch (blocker.id) {
     case 'great-pyramid':
-      return bakePyramid(b, blocker, 26, low);
+      if (!low) bakeCauseway(b, blocker, roads, true);
+      return bakePyramid(b, blocker, 30, low);
     case 'sphinx':
+      if (!low) bakeCauseway(b, blocker, roads, false);
       return bakeSphinx(b, blocker, low);
     case 'market':
       return bakeMarket(b, blocker, seed, low);
     case 'village':
       return bakeVillage(b, blocker, seed, low);
     default: {
-      if (blocker.id.startsWith('queen-pyramid')) return bakePyramid(b, blocker, 9, low);
+      if (blocker.id.startsWith('queen-pyramid')) return bakePyramid(b, blocker, 11, low);
       if (blocker.id.startsWith('oasis')) return bakeOasis(b, blocker, seed, low);
       // Unknown blocker: still render a solid so collision and visuals never disagree.
       const [w, d] = sizeOf(blocker);
@@ -486,29 +612,19 @@ interface Placement {
   readonly rotation: number;
 }
 
+/** Rocks everywhere, plus a dense rubble field in the quarry (pyramids) district. */
 function scatterRocks(definition: CityDefinition, rng: Rng, count: number): Placement[] {
-  const keepOut: RectXZ[] = [
-    ...definition.blockers.map((blocker) => inflated(blocker, 3)),
-    ...definition.roads.map((road) => inflated(road, 1.5)),
-    ...definition.sockets.map((socket) => ({
-      minX: socket.position[0] - 5,
-      maxX: socket.position[0] + 5,
-      minZ: socket.position[2] - 5,
-      maxZ: socket.position[2] + 5,
-    })),
-    { minX: definition.spawn[0] - 8, maxX: definition.spawn[0] + 8, minZ: definition.spawn[2] - 8, maxZ: definition.spawn[2] + 8 },
+  if (count === 0) return [];
+  const keepOut = keepOutRects(definition);
+  const [cx, cz] = centerOf(definition.bounds);
+  const [w, d] = sizeOf(definition.bounds);
+  const everywhere: Circle = { center: [cx, cz], radius: Math.hypot(w, d) / 2 };
+  const quarry = definition.districts.find((district) => district.id === 'pyramids')?.broadSearch;
+  const points = [
+    ...scatterIn(everywhere, definition, keepOut, rng, count),
+    ...(quarry ? scatterIn(quarry, definition, keepOut, rng, Math.round(count * 0.6)) : []),
   ];
-  const inner = inflated(definition.bounds, -3);
-  const rocks: Placement[] = [];
-  let attempts = 0;
-  while (rocks.length < count && attempts < count * 12) {
-    attempts += 1;
-    const x = inner.minX + rng.next() * (inner.maxX - inner.minX);
-    const z = inner.minZ + rng.next() * (inner.maxZ - inner.minZ);
-    if (keepOut.some((rect) => containsPoint(rect, x, z))) continue;
-    rocks.push({ x, z, scale: 0.6 + rng.next() * 1.1, rotation: rng.next() * Math.PI * 2 });
-  }
-  return rocks;
+  return points.map(([x, z]) => ({ x, z, scale: 0.6 + rng.next() * 1.1, rotation: rng.next() * Math.PI * 2 }));
 }
 
 function Rocks({ placements }: { placements: readonly Placement[] }) {
@@ -541,8 +657,11 @@ export function GizaScene({ definition, seed, quality }: CitySceneProps) {
     b.outlines = !low;
     bakeGround(b, definition, createRng(hashSeed(seed, definition.id, 'ground')), low);
     bakePads(b, definition);
-    for (const blocker of definition.blockers) bakeBlocker(b, blocker, hashSeed(seed, definition.id, blocker.id), low);
-    if (!low) bakeHorizon(b, definition.bounds, hashSeed(seed, definition.id, 'horizon'));
+    for (const blocker of definition.blockers) bakeBlocker(b, blocker, definition.roads, hashSeed(seed, definition.id, blocker.id), low);
+    if (!low) {
+      bakeDistricts(b, definition, seed);
+      bakeHorizon(b, definition.bounds, hashSeed(seed, definition.id, 'horizon'));
+    }
     return b.bake();
   }, [definition, seed, low]);
   useEffect(() => () => baked.forEach((part) => part.geometry.dispose()), [baked]);
