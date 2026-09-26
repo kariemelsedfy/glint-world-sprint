@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { MapVM, UIActions } from '@/shared/contracts';
+import { ArcadeButton } from './Arcade';
 import { CompassIcon } from './Icons';
 
 interface MapOverlayProps {
@@ -32,43 +33,36 @@ export function MapOverlay({ map, actions }: MapOverlayProps) {
       role="dialog"
       aria-modal="true"
       aria-label={`${cityLabel} map`}
-      className="fixed inset-0 z-50 pointer-events-auto flex items-center justify-center p-3 sm:p-6 bg-[#12253B]/70 backdrop-blur-sm select-none"
+      className="fixed inset-0 z-50 pointer-events-auto flex items-center justify-center p-3 sm:p-6 bg-[rgba(33,19,51,0.78)] ar-stripes select-none"
     >
-      <div className="bg-[#FFF6E5] w-full max-w-3xl rounded-3xl border-3 border-[#12253B] shadow-[6px_6px_0px_0px_#12253B] overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="ar-panel ar-panel-cream ar-pad-none w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Map Header */}
-        <header className="p-4 sm:px-6 bg-[#FFF6E5] border-b-2 border-[#12253B] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-[#24B8E8] text-[#12253B] rounded-xl border-2 border-[#12253B]">
+        <header className="px-4 py-3 sm:px-6 bg-[var(--ar-lavender)] border-b-[3px] border-[var(--ar-ink)] flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 bg-[var(--ar-cyan)] rounded-[8px] border-[3px] border-[var(--ar-ink)] shrink-0">
               <CompassIcon size={22} />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-black text-[#12253B] tracking-tight">
-                  {cityLabel} map
-                </h2>
-                <span className="text-[10px] font-black uppercase text-[#19A7A0] bg-[#19A7A0]/15 px-2 py-0.5 rounded-full glint-compact-hide">
-                  {landmarks.some((l) => l.label !== null) ? 'Names revealed' : 'Names hidden'}
+                <h2 className="ar-display text-xl sm:text-2xl m-0 truncate">{cityLabel} map</h2>
+                <span className="ar-chip ar-chip-ink min-h-0 py-0.5 px-2 glint-compact-hide">
+                  <span className="ar-chip-value text-[10px]">{landmarks.some((l) => l.label !== null) ? 'Names revealed' : 'Names hidden'}</span>
                 </span>
               </div>
-              <p className="text-xs text-[#12253B]/70 font-medium">
+              <p className="text-[11px] font-semibold m-0 glint-compact-hide">
                 North is up. Amber zones are where your remaining glints may be; hints shrink them.
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={close}
-            className="min-h-[44px] min-w-[44px] p-2 sm:px-3 sm:py-1.5 bg-[#12253B] hover:bg-[#203a59] text-white font-black text-sm rounded-xl border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#FFC857] focus-visible:ring-2 focus-visible:ring-[#FFC857] outline-none"
-            aria-label="Close"
-          >
+          <ArcadeButton tone="ink" size="sm" onClick={close} aria-label="Close">
             Close ✕
-          </button>
+          </ArcadeButton>
         </header>
 
         {/* Map Body: Map Canvas & Legend */}
-        <div className="flex-1 p-3 sm:p-5 overflow-auto flex flex-col items-center justify-center bg-[#F9F3E8]">
-          <div className="relative w-full aspect-square max-h-[60vh] max-w-[560px] glint-map-frame bg-[#FFFBF0] border-2 border-[#12253B] rounded-2xl shadow-inner overflow-hidden">
+        <div className="flex-1 p-3 sm:p-5 overflow-auto flex flex-col items-center justify-center">
+          <div className="relative w-full aspect-square max-h-[60vh] max-w-[560px] glint-map-frame bg-[#FFFBF0] border-[3px] border-[var(--ar-ink)] rounded-[var(--ar-radius)] shadow-[0_5px_0_0_var(--ar-ink)] overflow-hidden">
             {/* SVG Render */}
             <svg
               role="img"
@@ -161,37 +155,33 @@ export function MapOverlay({ map, actions }: MapOverlayProps) {
             </svg>
 
             {/* Toy North Compass Badge in corner */}
-            <div className="absolute top-3 right-3 bg-[#FFF6E5] border-2 border-[#12253B] rounded-xl px-2.5 py-1.5 shadow-[2px_2px_0px_0px_#12253B] flex items-center gap-1.5 text-xs font-black text-[#12253B]">
-              <CompassIcon size={18} />
-              <span>NORTH</span>
+            <div className="absolute top-3 right-3 ar-chip ar-chip-yellow min-h-0 py-1">
+              <CompassIcon size={16} />
+              <span className="ar-chip-value text-xs">North</span>
             </div>
           </div>
         </div>
 
         {/* Legend Footer */}
-        <footer className="p-3 sm:px-6 bg-[#FFF6E5] border-t-2 border-[#12253B] flex flex-wrap items-center justify-between text-xs font-bold gap-3">
-          <div className="flex items-center gap-4 text-[#12253B]">
+        <footer className="p-3 sm:px-6 border-t-[3px] border-[var(--ar-ink)] flex flex-wrap items-center justify-between text-xs font-extrabold gap-3">
+          <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5">
-              <span className="w-3.5 h-3.5 rounded-full bg-[#24B8E8] border border-[#12253B]" />
+              <span className="w-3.5 h-3.5 rounded-full bg-[#24B8E8] border-2 border-[var(--ar-ink)]" />
               <span>You</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3.5 h-3.5 rounded-full bg-[#FFC857]/60 border border-dashed border-[#D97706]" />
+              <span className="w-3.5 h-3.5 rounded-full bg-[#FFC857]/60 border-2 border-dashed border-[#D97706]" />
               <span>Search zone</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3.5 h-3.5 rounded bg-[#FFC857] border border-[#12253B]" />
+              <span className="w-3.5 h-3.5 rounded bg-[#FFC857] border-2 border-[var(--ar-ink)]" />
               <span>Landmark</span>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={close}
-            className="min-h-[44px] px-4 py-1.5 bg-[#FFC857] hover:bg-[#ffd577] text-[#12253B] rounded-xl border-2 border-[#12253B] shadow-[2px_2px_0px_0px_#12253B] font-black focus-visible:ring-2 focus-visible:ring-[#19A7A0]"
-          >
+          <ArcadeButton tone="yellow" size="sm" onClick={close}>
             Back to the city
-          </button>
+          </ArcadeButton>
         </footer>
       </div>
     </div>
