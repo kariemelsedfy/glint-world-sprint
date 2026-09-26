@@ -28,13 +28,15 @@ const NEAR_DISTANCE = 9;
 const BURST_SECONDS = PICKUP_PULSE_SECONDS + 0.15;
 
 /** Card dimensions in world units: picture, cream mat, ink outline, shallow depth. */
-const PICTURE = 1.1;
-const MAT = 1.36;
-const OUTLINE = 1.5;
-const DEPTH = 0.12;
-/** Card centre height when resting; the frame bottom sits just above the socket. */
-const REST_Y = OUTLINE / 2 + 0.22;
-const BOB = 0.07;
+const PICTURE = 2.3;
+const MAT = 2.75;
+const OUTLINE = 3;
+const DEPTH = 0.2;
+/** Cards lean back toward the elevated city camera (offset ~55° above the horizon). */
+const LEAN = -0.8;
+/** Card centre height when resting; the leaning frame's bottom edge sits on the stand. */
+const REST_Y = (OUTLINE / 2) * Math.cos(LEAN) + 0.34;
+const BOB = 0.1;
 
 const INK = '#211333';
 const CREAM = '#FFF5E9';
@@ -43,9 +45,9 @@ const YELLOW = '#FFD963';
 const pictureGeometry = new PlaneGeometry(PICTURE, PICTURE);
 const matGeometry = new BoxGeometry(MAT, MAT, DEPTH);
 const outlineGeometry = new BoxGeometry(OUTLINE, OUTLINE, DEPTH * 0.7);
-const shadowGeometry = new CircleGeometry(0.72, 20);
-const sparkGeometry = new OctahedronGeometry(0.09, 0);
-const legGeometry = new BoxGeometry(0.14, 0.26, 0.14);
+const shadowGeometry = new CircleGeometry(1.35, 24);
+const sparkGeometry = new OctahedronGeometry(0.16, 0);
+const standGeometry = new BoxGeometry(1.2, 0.3, 0.9);
 
 const matMaterial = new MeshLambertMaterial({ color: CREAM });
 const inkMaterial = new MeshLambertMaterial({ color: INK });
@@ -85,19 +87,19 @@ function TargetCard({ objective }: { objective: ObjectiveInstance }) {
     card.current.scale.setScalar(scale);
 
     if (shadow.current) {
-      const lift = 1 - (bob + BOB) * 0.9;
-      shadow.current.scale.setScalar(Math.max(0.5, lift) * scale);
+      const lift = 1 - (bob + BOB) * 0.6;
+      shadow.current.scale.set(Math.max(0.5, lift) * scale, Math.max(0.5, lift) * scale * 0.7, 1);
     }
 
     const orbit = t * (2.2 + excitement * 3);
     const radius = OUTLINE * 0.62 * scale;
     if (sparkA.current) {
-      sparkA.current.position.set(Math.cos(orbit) * radius, REST_Y + bob + Math.sin(orbit * 1.7) * 0.5, 0.2);
+      sparkA.current.position.set(Math.cos(orbit) * radius, REST_Y + bob + Math.sin(orbit * 1.7) * 0.9, 0.9);
       sparkA.current.rotation.y = orbit * 2;
       sparkA.current.scale.setScalar(0.6 + excitement * 1.2 + Math.sin(t * 7) * 0.15);
     }
     if (sparkB.current) {
-      sparkB.current.position.set(-Math.cos(orbit * 0.8) * radius, REST_Y + bob + Math.cos(orbit * 1.3) * 0.5, 0.2);
+      sparkB.current.position.set(-Math.cos(orbit * 0.8) * radius, REST_Y + bob + Math.cos(orbit * 1.3) * 0.9, 0.9);
       sparkB.current.rotation.y = -orbit * 2;
       sparkB.current.scale.setScalar(0.5 + excitement * 1.1 + Math.cos(t * 6) * 0.15);
     }
@@ -112,9 +114,8 @@ function TargetCard({ objective }: { objective: ObjectiveInstance }) {
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, 0.03, 0]}
       />
-      <mesh geometry={legGeometry} material={inkMaterial} position={[-0.42, 0.13, 0]} />
-      <mesh geometry={legGeometry} material={inkMaterial} position={[0.42, 0.13, 0]} />
-      <group ref={card} position={[0, REST_Y, 0]}>
+      <mesh geometry={standGeometry} material={inkMaterial} position={[0, 0.15, -0.1]} />
+      <group ref={card} position={[0, REST_Y, 0]} rotation={[LEAN, 0, 0]}>
         <mesh geometry={outlineGeometry} material={inkMaterial} />
         <mesh geometry={matGeometry} material={matMaterial} position={[0, 0, 0.02]} />
         <mesh geometry={pictureGeometry} material={pictureMaterial} position={[0, 0, DEPTH / 2 + 0.025]} />
