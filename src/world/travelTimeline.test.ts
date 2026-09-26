@@ -7,6 +7,7 @@ import {
   TRAVEL_TIMEOUT_MS,
   durationsFor,
   evaluateTimeline,
+  flightReadout,
   shouldStartReveal,
 } from '@/world/travelTimeline';
 import { facingRotation, latLonToVec3, markerFacing } from '@/world/GlobeScene';
@@ -95,5 +96,26 @@ describe('globe math', () => {
     const camera = new Vector3(0, 8, 30);
     expect(markerFacing(new Vector3(0, 0, 10), camera)).toBeGreaterThan(0.9);
     expect(markerFacing(new Vector3(0, 0, -10), camera)).toBeLessThan(0);
+  });
+});
+
+describe('flight readout', () => {
+  it('advances monotonically through takeoff, cruise and landing', () => {
+    const takeoff = flightReadout({ stage: 'enter', progress: 0.5, cover: 0.5, event: 'none' }, true);
+    const cruise = flightReadout({ stage: 'hold', progress: 0.5, cover: 1, event: 'none' }, true);
+    const landing = flightReadout({ stage: 'reveal', progress: 0.5, cover: 0.5, event: 'none' }, true);
+    expect(takeoff.beat).toBe('takeoff');
+    expect(cruise.beat).toBe('cruise');
+    expect(landing.beat).toBe('landing');
+    expect(takeoff.progress).toBeLessThan(cruise.progress);
+    expect(cruise.progress).toBeLessThan(landing.progress);
+    expect(flightReadout({ stage: 'reveal', progress: 1, cover: 0, event: 'complete' }, true).progress).toBe(1);
+  });
+
+  it('parks honestly while the destination is not ready instead of inventing progress', () => {
+    const waiting = flightReadout({ stage: 'hold', progress: 1, cover: 1, event: 'none' }, false);
+    expect(waiting.beat).toBe('waiting');
+    expect(waiting.progress).toBe(0.6);
+    expect(flightReadout({ stage: 'hold', progress: 1, cover: 1, event: 'none' }, true).progress).toBe(0.6);
   });
 });
