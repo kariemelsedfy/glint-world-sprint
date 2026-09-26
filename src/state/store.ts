@@ -87,6 +87,11 @@ function isActivePhase(phase: Phase): boolean {
   return phase === 'globe' || phase === 'city';
 }
 
+/** Phases that belong to a live run, including the travel transition between locations. */
+function isRunPhase(phase: Phase): boolean {
+  return isActivePhase(phase) || phase === 'travel';
+}
+
 let transitionCounter = 0;
 
 export const useRunStore = create<RunState>((set, get) => ({
@@ -271,7 +276,7 @@ export const useRunStore = create<RunState>((set, get) => ({
         return;
 
       case 'PAUSE':
-        if (!run || !isActivePhase(state.phase) || state.paused) return;
+        if (!run || !isRunPhase(state.phase) || state.paused) return;
         set({ paused: true, run: { ...run, practice: true } });
         return;
 
