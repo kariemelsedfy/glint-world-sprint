@@ -352,6 +352,10 @@
   font-weight: 800;
   color: var(--ar-purple);
 }
+.glint-ui .ar-ticket-best:has(svg) {
+  color: var(--ar-ink);
+  font-size: 0.78rem;
+}
 .glint-ui .ar-ticket-num {
   position: absolute;
   top: 6px;
@@ -464,6 +468,8 @@
   .glint-ui .ar-objectives { width: min(17.5rem, 50vw); }
   .glint-ui .ar-objectives .ar-display { font-size: 1rem; }
   .glint-ui .ar-ticket-title { font-size: 0.95rem; }
+  .glint-ui .ar-ticket-best.ar-ticket-has-best { display: inline-flex; margin-top: 0; }
+  .glint-ui .ar-ticket:has(.ar-ticket-has-best) .ar-ticket-meta { display: none; }
   .glint-ui .ar-ticket-body { padding: 0.35rem 0.5rem 0.45rem; }
   .glint-ui .ar-wordmark { font-size: 1.75rem !important; }
   .glint-ui .glint-pause-card {

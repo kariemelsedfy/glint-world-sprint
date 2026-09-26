@@ -1,6 +1,6 @@
 import type { UIModel, UIActions } from '@/shared/contracts';
 import { formatTime } from '../format';
-import { readLevelBest, trialMeta, trialObjectCount } from '../trialMeta';
+import { trialMeta, trialObjectCount } from '../trialMeta';
 import { MedalBadge } from './Icons';
 import { SettingsBar } from './SettingsBar';
 import { TicketArt } from './TicketArt';
@@ -42,7 +42,6 @@ export function MenuScreen({ model, actions }: MenuScreenProps) {
         <ul className="grid grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3 list-none m-0 p-0" aria-label="Trial selector">
           {model.levels.map((level, idx) => {
             const meta = trialMeta(level.id);
-            const best = readLevelBest(level);
             const active = level.id === selectedLevel;
             return (
               <li key={level.id} className="min-w-0">
@@ -51,6 +50,7 @@ export function MenuScreen({ model, actions }: MenuScreenProps) {
                   className="ar-ticket"
                   aria-pressed={active}
                   aria-label={level.title}
+                  title={level.bestMs !== null ? `${level.title} — best ${formatTime(level.bestMs)}` : level.title}
                   onClick={() => actions.onSelectLevel(level.id)}
                 >
                   <span className="ar-ticket-num" aria-hidden="true">
@@ -64,11 +64,11 @@ export function MenuScreen({ model, actions }: MenuScreenProps) {
                     <span className="ar-ticket-meta whitespace-nowrap">
                       {meta.difficulty} · {meta.duration} · {trialObjectCount(level.id)} obj
                     </span>
-                    <span className="ar-ticket-best glint-compact-hide">
-                      {best.bestMs !== null ? (
+                    <span className={`ar-ticket-best glint-compact-hide ${level.bestMs !== null ? 'ar-ticket-has-best' : ''}`}>
+                      {level.bestMs !== null ? (
                         <>
-                          {best.medal && best.medal !== 'complete' && <MedalBadge medal={best.medal} size={14} />}
-                          <span className="glint-tabular">Best {formatTime(best.bestMs)}</span>
+                          {level.medal && <MedalBadge medal={level.medal} size={20} />}
+                          <span className="glint-tabular">Best {formatTime(level.bestMs)}</span>
                         </>
                       ) : (
                         'First expedition'
