@@ -68,7 +68,12 @@ const ARENA_SAND = '#e6c690';
 const SOCKET_PAD_TONE = '#fff5e9';
 const SOCKET_DISC_TONE = '#cdb489';
 const PLASTER_TONES = ['#e8a35c', '#d97f4a', '#f0bd7c', '#c9683f', '#f2d19b', '#e08c5a'] as const;
-const ROOF_TONES = ['#b8512f', '#c25f38', '#a8492a', '#cf6a3e'] as const;
+const ROOF_TONES = ['#b8512f', '#c25f38', '#a8492a', '#cf6a3e', '#d9825a', '#9c4a2c'] as const;
+const ROOF_RIDGE = '#8a3a22';
+const COBBLE_DARK = '#ab9d83';
+const COBBLE_LIGHT = '#bfb095';
+const GRASS_TONE = '#7fa35a';
+const FOAM_TONE = '#dff7ff';
 const SHUTTER_TONE = '#3f6b4f';
 const WINDOW_TONE = '#3a2a3f';
 const TRIM_TONE = '#f9ecd6';
@@ -80,8 +85,6 @@ const LAMP_GLOW_TONE = '#ffd963';
 const UMBRELLA_TONES = ['#f43fab', '#ffd963', '#22c4ea'] as const;
 const TABLE_TONE = '#fff5e9';
 const WATER_TONE = '#22c4ea';
-const WATER_DEEP = '#1a9fc4';
-const BRONZE_TONE = '#5b6b4a';
 const AWNING_GREEN = '#3f8f5a';
 const AWNING_WHITE = '#fff5e9';
 
@@ -258,6 +261,25 @@ function buildHouses(houses: readonly House[], rng: Rng, quality: Quality, batch
     });
     batches.boxes.push(boxItem(eaves, height - 0.3, 0.35, TRIM_TONE));
     if (quality === 'low') continue;
+    // Pantile detail: a dark ridge cap and two tile courses running along the long axis of the roof.
+    const alongX = width(rect) >= depth(rect);
+    batches.boxes.push({ x: centerX(rect), y: height + 1.75, z: centerZ(rect), sx: alongX ? width(rect) * 0.35 : 0.5, sy: 0.25, sz: alongX ? 0.5 : depth(rect) * 0.35, color: ROOF_RIDGE });
+    for (const t of [0.35, 0.6]) {
+      const half = alongX ? depth(eaves) / 2 : width(eaves) / 2;
+      const y = height + 0.9 + (1 - t) * 0.9;
+      for (const side of [-1, 1] as const) {
+        const off = side * half * t;
+        batches.boxes.push({
+          x: alongX ? centerX(eaves) : centerX(eaves) + off,
+          y,
+          z: alongX ? centerZ(eaves) + off : centerZ(eaves),
+          sx: alongX ? width(eaves) * (1 - t * 0.6) : 0.18,
+          sy: 0.12,
+          sz: alongX ? 0.18 : depth(eaves) * (1 - t * 0.6),
+          color: ROOF_RIDGE,
+        });
+      }
+    }
 
     // Ground-floor arches on the +Z face (the chase camera looks toward -Z, so +Z faces are seen).
     const frontZ = rect.maxZ + 0.06;
@@ -325,16 +347,27 @@ function buildTrattoria(landmark: Landmark, quality: Quality, batches: Batches):
   if (quality === 'low') return;
 
   // Cafe tables under umbrellas on the terrace in front (walk-through decoration).
+  let index = 0;
   for (let x = footprint.minX + 2; x < footprint.maxX - 1; x += 4.2) {
-    const z = frontZ + 3.4;
-    const tone = UMBRELLA_TONES[Math.round((x - footprint.minX) / 4.2) % UMBRELLA_TONES.length]!;
-    batches.cylinders.push({ x, y: 0.45, z, sx: 0.16, sy: 0.9, sz: 0.16, color: LAMP_POST_TONE });
-    batches.cylinders.push({ x, y: 0.95, z, sx: 1.4, sy: 0.12, sz: 1.4, color: TABLE_TONE });
-    batches.cylinders.push({ x, y: 1.9, z, sx: 0.1, sy: 2.0, sz: 0.1, color: LAMP_POST_TONE });
-    batches.cones.push({ x, y: 3.2, z, sx: 3.2, sy: 0.9, sz: 3.2, color: tone });
-    for (const [dx, dz] of [[-0.9, 0.5], [0.9, 0.5]] as const) {
-      batches.boxes.push({ x: x + dx, y: 0.5, z: z + dz, sx: 0.5, sy: 0.9, sz: 0.5, color: TRUNK_TONE });
-    }
+    cafeTable(x, frontZ + 3.4, UMBRELLA_TONES[index % UMBRELLA_TONES.length]!, batches);
+    index += 1;
+  }
+  // Planters flanking the door.
+  for (const x of [footprint.minX + 0.6, footprint.maxX - 0.6]) {
+    batches.boxes.push({ x, y: 0.4, z: frontZ + 0.9, sx: 1.0, sy: 0.8, sz: 1.0, color: ROOF_TONES[0] });
+    batches.spheres.push({ x, y: 1.3, z: frontZ + 0.9, sx: 0.8, sy: 0.7, sz: 0.8, color: PINE_TONES[1] });
+  }
+}
+
+/** One cafe table with two chairs under a coloured umbrella; walk-through, so never placed inside a blocker. */
+function cafeTable(x: number, z: number, tone: string, batches: Batches): void {
+  batches.cylinders.push({ x, y: 0.45, z, sx: 0.16, sy: 0.9, sz: 0.16, color: LAMP_POST_TONE });
+  batches.cylinders.push({ x, y: 0.95, z, sx: 1.4, sy: 0.12, sz: 1.4, color: TABLE_TONE });
+  batches.cylinders.push({ x, y: 1.9, z, sx: 0.1, sy: 2.0, sz: 0.1, color: LAMP_POST_TONE });
+  batches.cones.push({ x, y: 3.2, z, sx: 3.2, sy: 0.9, sz: 3.2, color: tone });
+  batches.cones.push({ x, y: 3.7, z, sx: 0.4, sy: 0.3, sz: 0.4, color: TABLE_TONE });
+  for (const [dx, dz] of [[-0.9, 0.5], [0.9, 0.5]] as const) {
+    batches.boxes.push({ x: x + dx, y: 0.5, z: z + dz, sx: 0.5, sy: 0.9, sz: 0.5, color: TRUNK_TONE });
   }
 }
 
@@ -384,7 +417,19 @@ function buildColosseum(landmark: Landmark, quality: Quality, batches: Batches):
       const px = cx + Math.cos(angle) * (tx - 0.55);
       const pz = cz + Math.sin(angle) * (tz - 0.55);
       batches.boxes.push({ x: px, y: y0 + (TIER_HEIGHT - 1) / 2, z: pz, sx: 1.1, sy: TIER_HEIGHT - 1, sz: 1.1, ry: -angle, color: tier === 1 ? TRAVERTINE_LIGHT : TRAVERTINE });
+      if (quality === 'low') continue;
+      // Rounded arch head over each opening, a light keystone above it, and a pilaster capital.
+      const mid = angle + Math.PI / pillars;
+      const ax = cx + Math.cos(mid) * (tx - 0.5);
+      const az = cz + Math.sin(mid) * (tz - 0.5);
+      batches.cylinders.push({ x: ax, y: y0 + TIER_HEIGHT - 1.55, z: az, sx: 1.9, sy: 0.5, sz: 1.9, rx: Math.PI / 2, ry: -mid, color: ARCH_SHADOW });
+      batches.boxes.push({ x: ax, y: y0 + TIER_HEIGHT - 0.9, z: az, sx: 0.5, sy: 0.7, sz: 0.5, ry: -mid, color: TRAVERTINE_LIGHT });
+      batches.boxes.push({ x: px, y: y0 + TIER_HEIGHT - 1.15, z: pz, sx: 1.4, sy: 0.3, sz: 1.4, ry: -angle, color: TRAVERTINE_LIGHT });
     }
+  }
+  // Three shallow steps around the plinth so the base reads from ground level.
+  for (let step = 1; step <= 2; step += 1) {
+    batches.boxes.push(boxItem(grow(footprint, 0.6 + step * 0.7), 0, 0.3 - step * 0.12, TRAVERTINE_LIGHT));
   }
 
   // Broken attic: a partial fourth storey that survives only on one side.
@@ -481,18 +526,49 @@ function buildFountain(landmark: Landmark, quality: Quality, batches: Batches): 
   }
   batches.boxes.push({ x: cx, y: 4.2, z: wallZ + 1.4, sx: size * 0.2, sy: 5.6, sz: 0.8, color: ARCH_SHADOW });
   batches.cylinders.push({ x: cx, y: 7, z: wallZ + 1.4, sx: size * 0.2, sy: 0.8, sz: size * 0.2, rx: Math.PI / 2, color: ARCH_SHADOW });
-  // Central figure on a rocky base, riding out of the arch.
-  batches.boxes.push({ x: cx, y: 1.9, z: cz - 1, sx: 3.2, sy: 1.6, sz: 2.4, color: TRAVERTINE_DARK });
-  batches.cylinders.push({ x: cx, y: 3.6, z: cz - 1, sx: 1.2, sy: 1.8, sz: 1.2, color: BRONZE_TONE });
-  batches.spheres.push({ x: cx, y: 4.9, z: cz - 1, sx: 0.7, sy: 0.7, sz: 0.7, color: BRONZE_TONE });
-  batches.cylinders.push({ x: cx, y: 2.9, z: cz + 1.2, sx: 3.4, sy: 0.4, sz: 3.4, color: TRAVERTINE_LIGHT });
-  batches.cylinders.push({ x: cx, y: 3.1, z: cz + 1.2, sx: 2.6, sy: 0.16, sz: 2.6, color: WATER_DEEP });
-  if (quality === 'low') return;
-  // Little spouts of water as thin cyan columns.
-  for (const dx of [-2.6, 2.6]) {
-    batches.cylinders.push({ x: cx + dx, y: 2.0, z: cz + 1.5, sx: 0.3, sy: 1.6, sz: 0.3, color: WATER_TONE });
-    batches.spheres.push({ x: cx + dx, y: 2.9, z: cz + 1.5, sx: 0.45, sy: 0.35, sz: 0.45, color: WATER_TONE });
+  // Palazzo facade detail: pediment, windows either side of the niche.
+  batches.roofs.push({ x: cx, y: 12.0, z: wallZ, sx: size * 0.26, sy: 1.4, sz: 2.4, ry: Math.PI / 4, color: TRAVERTINE_LIGHT });
+  for (const dx of [-size * 0.2, size * 0.2]) {
+    batches.boxes.push({ x: cx + dx, y: 6.4, z: wallZ + 1.25, sx: 1.2, sy: 1.8, sz: 0.12, color: WINDOW_TONE });
+    batches.boxes.push({ x: cx + dx, y: 7.5, z: wallZ + 1.3, sx: 1.8, sy: 0.3, sz: 0.3, color: TRAVERTINE_LIGHT });
   }
+  // Trevi-style rocky scogli tumbling from the niche into the pool.
+  const rocks: readonly (readonly [number, number, number, number])[] = [
+    [0, 1.6, cz - 2.2, 4.4],
+    [-2.6, 1.1, cz - 1.0, 3.0],
+    [2.4, 1.2, cz - 1.4, 3.2],
+    [-1.2, 0.9, cz + 0.8, 2.4],
+    [1.6, 0.8, cz + 1.0, 2.2],
+    [-3.8, 0.7, cz + 0.4, 2.0],
+    [3.6, 0.7, cz + 0.2, 2.0],
+  ];
+  for (const [dx, h, z, w] of rocks) {
+    batches.boxes.push({ x: cx + dx, y: 1.1 + h / 2, z, sx: w, sy: h, sz: w * 0.8, ry: dx * 0.15, color: TRAVERTINE_DARK });
+  }
+  // Oceanus in the niche on a shell chariot, flanked by two tritons with sea horses.
+  batches.boxes.push({ x: cx, y: 3.9, z: cz - 2.4, sx: 1.6, sy: 2.6, sz: 1.0, color: TRAVERTINE_LIGHT });
+  batches.spheres.push({ x: cx, y: 5.6, z: cz - 2.4, sx: 0.6, sy: 0.65, sz: 0.6, color: TRAVERTINE_LIGHT });
+  batches.boxes.push({ x: cx, y: 4.9, z: cz - 2.4, sx: 2.6, sy: 0.5, sz: 0.8, color: TRAVERTINE_LIGHT });
+  batches.cylinders.push({ x: cx, y: 2.9, z: cz - 2.2, sx: 3.0, sy: 0.5, sz: 2.0, color: TRAVERTINE_LIGHT });
+  for (const side of [-1, 1] as const) {
+    const x = cx + side * 2.6;
+    batches.boxes.push({ x, y: 3.0, z: cz - 1.0, sx: 1.0, sy: 1.6, sz: 0.7, color: TRAVERTINE_LIGHT });
+    batches.spheres.push({ x, y: 4.0, z: cz - 1.0, sx: 0.4, sy: 0.45, sz: 0.4, color: TRAVERTINE_LIGHT });
+    batches.boxes.push({ x: x + side * 1.2, y: 2.6, z: cz + 0.2, sx: 1.6, sy: 0.9, sz: 0.9, ry: side * 0.5, color: TRAVERTINE_LIGHT });
+    batches.cylinders.push({ x: x + side * 1.9, y: 3.3, z: cz + 0.6, sx: 0.5, sy: 1.0, sz: 0.5, rx: -0.5, color: TRAVERTINE_LIGHT });
+  }
+  if (quality === 'low') return;
+  // Water: sheets sliding down the rocks, spray, and foam rings where they hit the pool.
+  for (const [dx, z, w] of [[-1.6, cz - 0.4, 2.2], [1.4, cz - 0.6, 2.0], [0, cz + 0.6, 2.8]] as const) {
+    batches.boxes.push({ x: cx + dx, y: 1.9, z, sx: w, sy: 0.12, sz: 2.4, rx: -0.9, color: WATER_TONE });
+    batches.cylinders.push({ x: cx + dx, y: 1.28, z: z + 1.6, sx: w + 0.8, sy: 0.06, sz: (w + 0.8) * 0.6, color: FOAM_TONE });
+  }
+  for (const side of [-1, 1] as const) {
+    const x = cx + side * 4.5;
+    batches.cylinders.push({ x, y: 2.0, z: cz + 0.6, sx: 0.3, sy: 1.6, sz: 0.3, color: WATER_TONE });
+    batches.spheres.push({ x, y: 2.9, z: cz + 0.6, sx: 0.45, sy: 0.35, sz: 0.45, color: FOAM_TONE });
+  }
+  batches.spheres.push({ x: cx, y: 3.4, z: cz - 2.0, sx: 0.9, sy: 0.5, sz: 0.9, color: FOAM_TONE });
 }
 
 function buildForumRuin(blocker: Blocker, rng: Rng, quality: Quality, batches: Batches): void {
@@ -515,6 +591,26 @@ function buildForumRuin(blocker: Blocker, rng: Rng, quality: Quality, batches: B
   batches.cylinders.push({ x: centerX(blocker), y: 1.7, z: centerZ(blocker), sx: 1.3, sy: 6, sz: 1.3, rz: Math.PI / 2, ry: 0.4, color: TRAVERTINE });
   batches.cylinders.push({ x: centerX(blocker) + 4, y: 1.7, z: centerZ(blocker) + 3, sx: 1.3, sy: 2.4, sz: 1.3, color: TRAVERTINE_DARK });
   if (quality === 'low') return;
+  // Checkered paving slabs on the podium, a grassy patch where slabs are missing, and steps on the +Z side.
+  for (let x = blocker.minX + 1.4; x < blocker.maxX - 1.2; x += 2.4) {
+    for (let z = blocker.minZ + 5.2; z < blocker.maxZ - 5.0; z += 2.4) {
+      const parity = (Math.round((x - blocker.minX) / 2.4) + Math.round((z - blocker.minZ) / 2.4)) % 2;
+      if (rng.next() < 0.12) {
+        batches.flats.push({ x, y: 1.115, z, sx: 2.1, sy: 2.1, sz: 1, rx: FLAT, color: GRASS_TONE });
+        continue;
+      }
+      batches.flats.push({ x, y: 1.115, z, sx: 2.1, sy: 2.1, sz: 1, rx: FLAT, color: parity === 0 ? TRAVERTINE_LIGHT : TRAVERTINE });
+    }
+  }
+  batches.boxes.push({ x: centerX(blocker), y: 0.3, z: blocker.maxZ - 0.4, sx: width(blocker) * 0.4, sy: 0.6, sz: 0.8, color: TRAVERTINE_LIGHT });
+  // A surviving arch fragment at the east end.
+  const archX = blocker.maxX - 4;
+  const archZ = centerZ(blocker);
+  for (const dz of [-2.2, 2.2]) {
+    batches.boxes.push({ x: archX, y: 1.1 + 3.2, z: archZ + dz, sx: 1.6, sy: 6.4, sz: 1.6, color: TRAVERTINE_DARK });
+  }
+  batches.boxes.push({ x: archX, y: 1.1 + 6.9, z: archZ, sx: 1.8, sy: 1.0, sz: 6.0, color: TRAVERTINE_DARK });
+  batches.cylinders.push({ x: archX, y: 1.1 + 5.2, z: archZ, sx: 4.4, sy: 1.9, sz: 4.4, rz: Math.PI / 2, color: TRAVERTINE_DARK });
   for (let i = 0; i < 6; i += 1) {
     batches.boxes.push({
       x: blocker.minX + 3 + rng.next() * (width(blocker) - 6),
@@ -574,6 +670,21 @@ function isClearForProps(definition: CityDefinition, x: number, z: number, keepO
   return Math.hypot(definition.spawn[0] - x, definition.spawn[2] - z) >= SOCKET_CLEAR_RADIUS;
 }
 
+/** Like isClearForProps but allows piazza edges: only the blocker rectangles, roads, sockets and spawn are excluded. */
+function isPropSafe(definition: CityDefinition, x: number, z: number): boolean {
+  if (!contains(grow(definition.bounds, -2), x, z)) return false;
+  for (const blocker of definition.blockers) {
+    if (contains(grow(blocker, 2.0), x, z)) return false;
+  }
+  for (const road of definition.roads) {
+    if (contains(grow(road, 1.0), x, z)) return false;
+  }
+  for (const socket of definition.sockets) {
+    if (Math.hypot(socket.position[0] - x, socket.position[2] - z) < SOCKET_CLEAR_RADIUS) return false;
+  }
+  return Math.hypot(definition.spawn[0] - x, definition.spawn[2] - z) >= SOCKET_CLEAR_RADIUS;
+}
+
 function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batches: Batches): void {
   const placed: [number, number][] = [];
   const target = quality === 'low' ? 20 : 56;
@@ -584,7 +695,19 @@ function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batc
     if (!isClearForProps(definition, x, z, true)) continue;
     if (placed.some(([px, pz]) => Math.hypot(px - x, pz - z) < 4.5)) continue;
     placed.push([x, z]);
-    if (rng.next() < 0.55) {
+    const roll = rng.next();
+    if (roll < 0.3 && quality !== 'low') {
+      // Cypress grove: a tight cluster of three to five spires of varying height.
+      const count = 3 + rng.int(3);
+      for (let i = 0; i < count; i += 1) {
+        const angle = (i / count) * Math.PI * 2 + rng.next();
+        const radius = 1.2 + rng.next() * 1.2;
+        const gx = x + Math.cos(angle) * radius;
+        const gz = z + Math.sin(angle) * radius;
+        if (!isClearForProps(definition, gx, gz, true)) continue;
+        cypress(gx, gz, 5 + rng.next() * 4, rng.pick(CYPRESS_TONES), batches);
+      }
+    } else if (roll < 0.6) {
       cypress(x, z, 6 + rng.next() * 3, rng.pick(CYPRESS_TONES), batches);
     } else {
       // Stone pine: tall bare trunk with a flat umbrella crown.
@@ -594,6 +717,28 @@ function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batc
     }
   }
   if (quality === 'low') return;
+  // Cafe tables on the fountain piazza and along house fronts; outside every blocker, clear of sockets.
+  let tables = 0;
+  for (const landmark of definition.landmarks) {
+    if (landmark.silhouette !== 'fountain') continue;
+    const ring = grow(landmark.footprint, 4);
+    for (let x = ring.minX + 1; x <= ring.maxX - 1; x += 4.5) {
+      for (const z of [ring.minZ, ring.maxZ]) {
+        if (!isPropSafe(definition, x, z)) continue;
+        cafeTable(x, z, UMBRELLA_TONES[tables % UMBRELLA_TONES.length]!, batches);
+        tables += 1;
+      }
+    }
+  }
+  for (const blocker of definition.blockers) {
+    if (!blocker.id.startsWith('insula')) continue;
+    const z = blocker.maxZ + 3.2;
+    for (let x = blocker.minX + 3; x <= blocker.maxX - 3; x += 7.5) {
+      if (rng.next() < 0.4 || !isPropSafe(definition, x, z)) continue;
+      cafeTable(x, z, UMBRELLA_TONES[tables % UMBRELLA_TONES.length]!, batches);
+      tables += 1;
+    }
+  }
   for (const road of definition.roads) {
     const horizontal = width(road) >= depth(road);
     const length = horizontal ? width(road) : depth(road);
@@ -628,6 +773,22 @@ export function RomeScene({ definition, seed, quality }: CitySceneProps) {
       }
     }
     for (const road of roads) batches.flats.push(flatItem(road, 0.02, COBBLE_TONE));
+    if (quality !== 'low') {
+      // Sparse cobble slabs in two tones, staggered along each lane, plus a pale centre line of kerbstones.
+      for (const road of roads) {
+        const horizontal = width(road) >= depth(road);
+        const length = horizontal ? width(road) : depth(road);
+        for (let along = 1.5; along < length - 1.5; along += 2.2) {
+          for (const lane of [-4.5, -1.5, 1.5, 4.5]) {
+            if (rng.next() < 0.5) continue;
+            const stagger = Math.abs(lane) < 2 ? 1.1 : 0;
+            const x = horizontal ? road.minX + along + stagger : centerX(road) + lane;
+            const z = horizontal ? centerZ(road) + lane : road.minZ + along + stagger;
+            batches.flats.push({ x, y: 0.024, z, sx: 1.6, sy: 1.6, sz: 1, rx: FLAT, color: rng.next() < 0.5 ? COBBLE_DARK : COBBLE_LIGHT });
+          }
+        }
+      }
+    }
 
     const houses: House[] = [];
     for (const blocker of blockers) {
