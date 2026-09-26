@@ -193,10 +193,16 @@ export interface ResultVM {
   readonly isNewBest: boolean;
   readonly sessionOnly: boolean;
 }
+export interface LevelSummaryVM {
+  readonly id: LevelId;
+  readonly title: string;
+  readonly bestMs: number | null;
+  readonly medal: ResultVM['medal'] | null;
+}
 export interface UIModel {
   readonly phase: Phase;
   readonly levelId: LevelId | null;
-  readonly levels: readonly { id: LevelId; title: string }[];
+  readonly levels: readonly LevelSummaryVM[];
   readonly cities: readonly { id: CityId; label: string }[];
   readonly cityId: CityId | null;
   readonly cards: readonly ObjectiveCardVM[];

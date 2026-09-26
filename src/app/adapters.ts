@@ -2,7 +2,7 @@
  * State → view model adapters. Owner: A0.
  * The UI never sees store internals and never recomputes rules, hints or scores here.
  */
-import { HINT_COST_MS } from '@/shared/contracts';
+import { HINT_COST_MS, RULES_VERSION } from '@/shared/contracts';
 import type {
   CityId,
   HintTier,
@@ -16,7 +16,7 @@ import { getCity, listCities } from '@/cities';
 import { getTargetImage } from '@/assets/targetImages';
 import { LEVELS, getTarget } from '@/content';
 import type { RunState } from '@/state/store';
-import { adjustedMs } from '@/state/store';
+import { adjustedMs, bestKey, medalFor } from '@/state/store';
 
 const HINT_LABELS = ['Hint 1: city', 'Hint 2: district', 'Hint 3: nearby'] as const;
 
@@ -100,7 +100,23 @@ export function toUIModel(state: RunState): UIModel {
   return {
     phase: state.phase,
     levelId: state.levelId,
-    levels: LEVELS.map((level) => ({ id: level.id, title: level.title })),
+    levels: LEVELS.map((level) => {
+      const best =
+        state.bests[
+          bestKey({
+            levelId: level.id,
+            levelVersion: level.version,
+            seed: level.seed,
+            rulesVersion: RULES_VERSION,
+          })
+        ] ?? null;
+      return {
+        id: level.id,
+        title: level.title,
+        bestMs: best,
+        medal: best === null ? null : medalFor(level, best),
+      };
+    }),
     cities: listCities(),
     cityId: destinationCityId(state),
     cards: run ? run.objectives.map((objective) => cardFor(state, objective.targetId)) : [],
