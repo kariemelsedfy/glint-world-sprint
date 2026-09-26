@@ -515,7 +515,38 @@ function buildGoldenGate(approach: Blocker, quality: Quality, batches: Batches):
       if (quality !== 'low') batches.boxes.push({ x: towerX + 1.75, y: baseY + y, z: cz, sx: 0.2, sy: 1.1, sz: DECK_HALF_DEPTH * 2 + 1, color: ORANGE_DARK });
     }
     batches.boxes.push({ x: towerX, y: baseY + 2.5, z: cz, sx: 3.4, sy: 5, sz: DECK_HALF_DEPTH * 2 + 1, color: ORANGE });
+    // X-bracing between the portal braces, cable saddles and aviation beacons on top.
+    if (quality !== 'low') {
+      const zl = cz - (DECK_HALF_DEPTH + 0.6);
+      const zr = cz + (DECK_HALF_DEPTH + 0.6);
+      for (const [y0, y1] of [[DECK_Y + 5.6, DECK_Y + 8.9], [DECK_Y + 11.1, TOWER_HEIGHT - 2.6]] as const) {
+        batches.boxes.push(strutItem([towerX - 1.7, baseY + y0, zl], [towerX - 1.7, baseY + y1, zr], 0.35, ORANGE_DARK));
+        batches.boxes.push(strutItem([towerX - 1.7, baseY + y0, zr], [towerX - 1.7, baseY + y1, zl], 0.35, ORANGE_DARK));
+      }
+    }
+    for (const side of [-1, 1] as const) {
+      const z = cz + side * (DECK_HALF_DEPTH + 0.6);
+      batches.boxes.push({ x: towerX, y: baseY + TOWER_HEIGHT + 1.5, z, sx: 1.6, sy: 0.7, sz: 1.6, color: CABLE_TONE });
+    }
+    batches.boxes.push({ x: towerX, y: baseY + TOWER_HEIGHT + 2.4, z: cz, sx: 0.2, sy: 1.4, sz: 0.2, color: INK });
+    batches.spheres.push({ x: towerX, y: baseY + TOWER_HEIGHT + 3.3, z: cz, sx: 0.55, sy: 0.55, sz: 0.55, color: HOT_PINK });
   }
+  // Deck lamps along both railings, and a tug pushing through the strait under the span.
+  if (quality !== 'low') {
+    for (let x = approach.minX - 6; x > DECK_END_X + 4; x -= 12) {
+      for (const side of [-1, 1] as const) {
+        const z = cz + side * (DECK_HALF_DEPTH + 0.3);
+        batches.cylinders.push({ x, y: DECK_Y + 1.6, z, sx: 0.14, sy: 2.2, sz: 0.14, color: LAMP_POST_TONE });
+        batches.spheres.push({ x, y: DECK_Y + 2.8, z, sx: 0.36, sy: 0.36, sz: 0.36, color: LAMP_GLOW_TONE });
+      }
+    }
+  }
+  const tugX = WEST_TOWER_X - 16;
+  const tugZ = cz + 11;
+  batches.boxes.push({ x: tugX, y: 0.5, z: tugZ, sx: 6, sy: 1.4, sz: 2.8, ry: 0.35, color: INK });
+  batches.boxes.push({ x: tugX, y: 1.3, z: tugZ, sx: 6.2, sy: 0.3, sz: 3.0, ry: 0.35, color: HOT_PINK });
+  batches.boxes.push({ x: tugX - 0.8, y: 2.2, z: tugZ, sx: 2.4, sy: 1.6, sz: 2.0, ry: 0.35, color: CREAM });
+  batches.cylinders.push({ x: tugX + 1.4, y: 2.6, z: tugZ, sx: 0.7, sy: 2.2, sz: 0.7, color: YELLOW });
 
   // Main cables: from the plaza anchorage over both towers to the Marin anchorage.
   const topY = TOWER_HEIGHT + 0.4;
@@ -636,6 +667,27 @@ function buildVictorianRow(block: Blocker, rng: Rng, quality: Quality, batches: 
     }
     // Second-colour band on the bay window sill for the "painted lady" look.
     batches.boxes.push({ x: bayX, y: 1.35, z: body.maxZ + 0.6, sx: bayWidth + 0.3, sy: 0.3, sz: 1.2, color: rng.pick(TRIMS) });
+    // Porch columns either side of the door, flower boxes under the bay glass, and on some houses
+    // a railed balcony on the top storey.
+    for (const px of [body.minX + 0.35, body.minX + 1.65]) {
+      batches.cylinders.push({ x: px, y: 1.9, z: body.maxZ + 1.1, sx: 0.18, sy: 2.6, sz: 0.18, color: trim });
+    }
+    batches.boxes.push({ x: body.minX + 1.0, y: 3.25, z: body.maxZ + 0.7, sx: 1.9, sy: 0.14, sz: 1.1, color: trim });
+    const flower = rng.pick([HOT_PINK, YELLOW, CYAN, '#ff8a5b'] as const);
+    for (let y = 2.4; y < height - 1.4; y += 2.6) {
+      batches.boxes.push({ x: bayX, y: y + 0.02, z: body.maxZ + 1.1, sx: bayWidth - 0.6, sy: 0.22, sz: 0.3, color: POST_TONE });
+      batches.boxes.push({ x: bayX, y: y + 0.22, z: body.maxZ + 1.1, sx: bayWidth - 0.7, sy: 0.18, sz: 0.24, color: flower });
+    }
+    if (rng.next() < 0.45) {
+      const by = height - 1.9;
+      const bw = Math.max(1.2, width(body) - bayWidth - 1.2);
+      const bx = body.maxX - bw / 2 - 0.2;
+      batches.boxes.push({ x: bx, y: by, z: body.maxZ + 0.5, sx: bw, sy: 0.16, sz: 1.0, color: trim });
+      batches.boxes.push({ x: bx, y: by + 0.55, z: body.maxZ + 0.98, sx: bw, sy: 0.06, sz: 0.06, color: INK });
+      for (let rx = bx - bw / 2 + 0.15; rx <= bx + bw / 2; rx += 0.35) {
+        batches.boxes.push({ x: rx, y: by + 0.3, z: body.maxZ + 0.98, sx: 0.05, sy: 0.55, sz: 0.05, color: INK });
+      }
+    }
   }
 }
 
@@ -745,6 +797,30 @@ function buildWharfSheds(block: Blocker, quality: Quality, batches: Batches): vo
   for (let x = block.minX + 2; x < block.maxX - 1; x += 3.5) {
     batches.cylinders.push({ x, y: 0.6, z: centerZ(block), sx: 1.1, sy: 1.2, sz: 1.1, color: x % 7 < 3.5 ? POST_TONE : YELLOW });
   }
+  // String lights swagging from the sign to the shed corners, wire crab-pot stacks, a fish stall.
+  const signX = centerX(block);
+  const signY = 8.9;
+  for (const corner of [block.minX + 0.6, block.maxX - 0.6]) {
+    const steps = 8;
+    for (let index = 0; index <= steps; index += 1) {
+      const t = index / steps;
+      const x = signX + (corner - signX) * t;
+      const y = signY - 3.4 * t - 2.4 * 4 * t * (1 - t);
+      batches.spheres.push({ x, y, z: block.maxZ + 1.4, sx: 0.22, sy: 0.22, sz: 0.22, color: index % 2 ? YELLOW : CREAM });
+    }
+    batches.boxes.push(strutItem([signX, signY, block.maxZ + 1.4], [corner, signY - 3.4, block.maxZ + 1.4], 0.05, INK));
+  }
+  for (const [px, pz] of [[block.maxX - 2.2, centerZ(block) + 1.9], [block.maxX - 3.6, centerZ(block) + 1.9], [block.maxX - 2.9, centerZ(block) + 1.9]] as const) {
+    const stacked = px === block.maxX - 2.9;
+    batches.boxes.push({ x: px, y: stacked ? 1.6 : 0.55, z: pz, sx: 1.1, sy: 1.0, sz: 1.1, color: CYAN });
+    batches.boxes.push({ x: px, y: stacked ? 1.6 : 0.55, z: pz, sx: 0.8, sy: 1.06, sz: 0.8, color: INK });
+  }
+  const stallX = block.minX + 4.5;
+  const stallZ = centerZ(block) - 1.9;
+  batches.boxes.push({ x: stallX, y: 0.5, z: stallZ, sx: 2.6, sy: 1.0, sz: 1.2, color: CREAM });
+  batches.boxes.push({ x: stallX, y: 1.15, z: stallZ, sx: 2.4, sy: 0.3, sz: 1.0, color: GLASS_TONE });
+  batches.cylinders.push({ x: stallX, y: 2.0, z: stallZ, sx: 0.12, sy: 2.6, sz: 0.12, color: INK });
+  batches.spheres.push({ x: stallX, y: 3.2, z: stallZ, sx: 1.9, sy: 0.55, sz: 1.9, color: HOT_PINK });
 }
 
 function buildHillTerrace(block: Blocker, rng: Rng, quality: Quality, batches: Batches): void {
@@ -795,6 +871,14 @@ function buildBayPier(block: Blocker, quality: Quality, batches: Batches): void 
   }
   batches.spheres.push({ x: centerX(block), y: 0.9, z: block.maxZ - 2.2, sx: 0.5, sy: 0.6, sz: 0.5, color: BUOY_TONE });
   batches.spheres.push({ x: block.minX + 3, y: 0.9, z: block.maxZ - 3, sx: 0.5, sy: 0.6, sz: 0.5, color: YELLOW });
+  // Sea lions lounging on a float in the inlet.
+  const floatX = block.minX + 4.5;
+  const floatZ = block.maxZ - 6;
+  batches.boxes.push({ x: floatX, y: 0.75, z: floatZ, sx: 4.5, sy: 0.4, sz: 3.2, ry: 0.2, color: PLANK_TONE });
+  for (const [ox, oz, r] of [[-1.2, -0.6, 1.0], [0.6, 0.7, 0.9], [1.4, -0.8, 0.8]] as const) {
+    batches.spheres.push({ x: floatX + ox, y: 1.25, z: floatZ + oz, sx: r * 0.7, sy: r * 0.5, sz: r * 1.2, color: POST_TONE });
+    batches.spheres.push({ x: floatX + ox, y: 1.55, z: floatZ + oz - r * 0.6, sx: r * 0.4, sy: r * 0.4, sz: r * 0.45, color: POST_TONE });
+  }
   // Fishing boat with a wheelhouse, lifebuoy rings on the pier posts, a lamp at the pier head.
   const fx = block.maxX - 9;
   const fz = block.minZ + 3.2;
