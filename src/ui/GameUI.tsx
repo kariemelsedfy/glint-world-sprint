@@ -241,7 +241,7 @@ function MapOverlay({ map, onClose }: { readonly map: MapVM; readonly onClose: (
           role="img"
           aria-label={`${map.cityLabel} map`}
           viewBox={`${minX} ${minZ} ${width} ${height}`}
-          className="mt-3 h-[60vh] w-[60vh] max-h-[70vw] max-w-[70vw] rounded-xl bg-[#1d3a5c]"
+          className="mt-3 block aspect-square w-[min(60vh,70vw,32rem)] max-w-full rounded-xl bg-[#1d3a5c]"
         >
           {map.roads.map((road, index) => (
             <rect

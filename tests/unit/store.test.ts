@@ -60,6 +60,19 @@ describe('run store rules', () => {
     expect(store().run!.hintPenaltyMs).toBe(HINT_COST_MS[0] + HINT_COST_MS[1]);
   });
 
+  it('pauses a run that is mid-travel', () => {
+    const store = useRunStore.getState();
+    const objectives = resolveObjectives(level, TARGETS);
+    store.dispatch({ type: 'PREPARE_RUN', run: createRunSnapshot(level, objectives, 'run-travel') });
+    store.dispatch({ type: 'GO' });
+    useRunStore.getState().dispatch({ type: 'SELECT_CITY', cityId: objectives[0]!.cityId });
+    expect(useRunStore.getState().phase).toBe('travel');
+
+    useRunStore.getState().dispatch({ type: 'PAUSE', reason: 'hidden' });
+    expect(useRunStore.getState().paused).toBe(true);
+    expect(useRunStore.getState().run!.practice).toBe(true);
+  });
+
   it('marks a paused run as practice and never records a best for it', () => {
     const first = startRunInFirstCity();
     const store = () => useRunStore.getState();
