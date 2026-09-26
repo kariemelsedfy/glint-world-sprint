@@ -12,7 +12,7 @@ export interface TimelineDurations {
   readonly revealMs: number;
 }
 
-export const ENTER_DURATIONS: TimelineDurations = { coverMs: 950, holdMs: 180, revealMs: 620 };
+export const ENTER_DURATIONS: TimelineDurations = { coverMs: 950, holdMs: 400, revealMs: 620 };
 export const EXIT_DURATIONS: TimelineDurations = { coverMs: 480, holdMs: 80, revealMs: 520 };
 export const REDUCED_DURATIONS: TimelineDurations = { coverMs: 0, holdMs: 40, revealMs: 120 };
 export const TRAVEL_TIMEOUT_MS = 8000;
@@ -71,6 +71,24 @@ export function evaluateTimeline(input: TimelineInput, durations: TimelineDurati
     return { stage: 'reveal', progress: 0, cover: 1, event: 'none' };
   }
   return { stage: 'hold', progress: holdT, cover: 1, event: 'none' };
+}
+
+export type FlightBeat = 'takeoff' | 'cruise' | 'waiting' | 'landing';
+
+export interface FlightReadout {
+  readonly beat: FlightBeat;
+  /** 0..1 honest overall progress: 0.45 takeoff, 0.15 cruise/hold, 0.4 landing. Never advances while waiting. */
+  readonly progress: number;
+}
+
+/** Maps a timeline frame to the single beat + progress the overlay ticket shows. */
+export function flightReadout(frame: TimelineFrame, destinationReady: boolean): FlightReadout {
+  if (frame.stage === 'reveal') return { beat: 'landing', progress: 0.6 + 0.4 * Math.min(1, frame.progress) };
+  if (frame.stage === 'hold') {
+    if (frame.progress >= 1 && !destinationReady) return { beat: 'waiting', progress: 0.6 };
+    return { beat: 'cruise', progress: 0.45 + 0.15 * Math.min(1, frame.progress) };
+  }
+  return { beat: 'takeoff', progress: 0.45 * Math.min(1, frame.progress) };
 }
 
 /** True when the hold can end and the reveal should begin this frame. */

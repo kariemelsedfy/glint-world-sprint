@@ -37,7 +37,7 @@ const SOUTH_AMERICA: Outline = [
   [-54, -68], [-50, -75], [-40, -73], [-30, -71], [-18, -70], [-6, -80], [1, -79], [7, -78],
 ];
 const AFRICA: Outline = [
-  [36, -6], [37, 10], [33, 12], [31, 32], [23, 36], [12, 43], [11, 51], [2, 46], [-5, 40], [-15, 41],
+  [35.5, -6], [36, 10], [32.5, 13], [31, 31], [23, 36], [12, 43], [11, 51], [2, 46], [-5, 40], [-15, 41],
   [-25, 35], [-34, 26], [-34, 19], [-27, 15], [-16, 12], [-6, 12], [1, 9], [5, 5], [5, -6], [9, -14],
   [15, -17], [21, -17], [28, -13], [33, -9],
 ];
@@ -45,8 +45,13 @@ const EURASIA: Outline = [
   [70, 26], [71, 55], [76, 70], [76, 105], [72, 130], [69, 160], [64, 180], [59, 164], [55, 158],
   [51, 141], [43, 134], [39, 122], [30, 122], [22, 112], [12, 109], [1, 104], [8, 98], [16, 94],
   [22, 90], [17, 82], [8, 77], [21, 72], [24, 61], [26, 56], [22, 58], [15, 52], [13, 43], [21, 39],
-  [30, 33], [36, 36], [36, 28], [40, 22], [37, 15], [44, 12], [43, 7], [37, -2], [37, -9], [43, -9],
-  [48, -5], [51, 2], [54, 8], [57, 8], [58, 6], [62, 5], [69, 14],
+  // Europe is traced densely (duplicate vertices sharpen peninsula tips) because three pins land here.
+  [30, 33], [36.5, 36], [36.5, 30], [37, 27], [40, 26], [41, 23], [39, 22], [36.5, 22.5], [36.5, 22.5], [38, 20.5],
+  [39, 20], [42, 19], [44.5, 15.5], [42.5, 14.5], [41.5, 17], [40, 19], [40, 19], [39, 17.5], [38, 16], [38, 16],
+  [39.5, 14.5], [41.5, 12], [43.5, 10], [44, 8.5], [43.5, 6], [42, 3], [40, 0], [37, -1], [36.5, -6], [37, -9],
+  [39, -9.5], [43, -9], [43.5, -2], [46, -1], [48, -5], [49, 0], [51, 2], [53, 5], [54, 8], [57, 8.5],
+  [57.5, 10.5], [56, 10.5], [54.5, 11], [54, 14], [54.5, 20], [57, 21.5], [59.5, 24], [60, 30], [62, 24],
+  [65, 21], [63, 18.5], [60, 17], [57.5, 16], [56.5, 13.5], [58.5, 11.5], [59.5, 10], [58.5, 7], [62, 5], [69, 14],
 ];
 const AUSTRALIA: Outline = [
   [-12, 131], [-12, 136], [-16, 141], [-11, 143], [-19, 147], [-27, 153], [-33, 152], [-38, 147],
@@ -76,6 +81,18 @@ const LANDS: readonly Land[] = [
   { outline: [[5, 96], [-1, 100], [-6, 106], [-7, 113], [-3, 116], [1, 111], [-1, 104], [3, 101]] },
   { outline: [[65, -20], [66, -14], [64, -14], [63, -22]] },
   { outline: [[22, -78], [20, -74], [21, -84], [23, -82]] },
+  // Mediterranean islands: Sicily, Sardinia, Corsica, Crete, Cyprus.
+  { outline: [[38.2, 12.4], [38.2, 15.6], [36.7, 15.2], [37.2, 12.6]] },
+  { outline: [[41.2, 8.4], [41.2, 9.7], [39, 9.6], [39, 8.5]] },
+  { outline: [[43, 9], [43, 9.5], [41.5, 9.3], [41.5, 8.7]] },
+  { outline: [[35.6, 23.5], [35.6, 26.3], [34.9, 26.1], [35, 23.6]] },
+  { outline: [[35.6, 32.3], [35.6, 34.5], [34.7, 33.6], [34.8, 32.4]] },
+];
+
+// Inland seas painted back over the land so the Europe/Middle-East silhouette keeps its gaps.
+const SEAS: readonly Land[] = [
+  { outline: [[41.2, 28], [43, 28], [45.5, 33], [45, 37], [43, 40.5], [41, 41.5], [41, 36], [41, 29.5]] },
+  { outline: [[47, 48], [46.5, 52], [42, 51], [38, 52], [37, 53.5], [40.5, 54], [45, 52.5], [47.5, 50]] },
 ];
 
 // Deserts are inset blobs so the coast stays green/sandy around them.
@@ -93,20 +110,31 @@ function project(lat: number, lon: number, width: number, height: number): [numb
 }
 
 /** Closed loop through the midpoints of the polygon edges: rounds every corner without extra vertices. */
-function traceOutline(ctx: CanvasRenderingContext2D, outline: Outline, width: number, height: number): void {
+function appendOutline(target: CanvasRenderingContext2D | Path2D, outline: Outline, width: number, height: number): void {
   const points = outline.map(([lat, lon]) => project(lat, lon, width, height));
   const n = points.length;
   const mid = (a: [number, number], b: [number, number]): [number, number] => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-  ctx.beginPath();
   const start = mid(points[n - 1], points[0]);
-  ctx.moveTo(start[0], start[1]);
+  target.moveTo(start[0], start[1]);
   for (let i = 0; i < n; i += 1) {
     const current = points[i];
     const next = points[(i + 1) % n];
     const m = mid(current, next);
-    ctx.quadraticCurveTo(current[0], current[1], m[0], m[1]);
+    target.quadraticCurveTo(current[0], current[1], m[0], m[1]);
   }
-  ctx.closePath();
+  target.closePath();
+}
+
+function traceOutline(ctx: CanvasRenderingContext2D, outline: Outline, width: number, height: number): void {
+  ctx.beginPath();
+  appendOutline(ctx, outline, width, height);
+}
+
+/** Union of all land outlines, used to clip the offset highlight fills so they never spill into seas. */
+function landPath(lands: readonly Land[], width: number, height: number): Path2D {
+  const path = new Path2D();
+  for (const land of lands) appendOutline(path, land.outline, width, height);
+  return path;
 }
 
 function fillOutlines(ctx: CanvasRenderingContext2D, lands: readonly Land[], width: number, height: number, fill: (land: Land) => string): void {
@@ -160,17 +188,19 @@ export function paintEarth(ctx: CanvasRenderingContext2D, width: number, height:
     ctx.fill();
   }
 
-  // Shallow-water halo, sandy coast, ink outline, then land fill and a mint highlight band.
-  strokeOutlines(ctx, LANDS, width, height, 'rgba(160,240,255,0.55)', 9 * unit);
-  strokeOutlines(ctx, LANDS, width, height, SAND, 5 * unit);
+  // Shallow-water halo and ink outline sit outside the coast; the sandy beach is an inner stroke so
+  // narrow seas (Mediterranean, Baltic, Red Sea) stay water instead of filling with beach.
+  strokeOutlines(ctx, LANDS, width, height, 'rgba(160,240,255,0.5)', 6 * unit);
   strokeOutlines(ctx, LANDS, width, height, INK, 2.4 * unit);
   fillOutlines(ctx, LANDS, width, height, (land) => land.fill ?? LAND_DARK);
 
   ctx.save();
+  ctx.clip(landPath(LANDS, width, height));
   ctx.translate(0, -1.6 * unit);
   fillOutlines(ctx, LANDS, width, height, (land) => land.fill ?? LAND);
   ctx.restore();
   ctx.save();
+  ctx.clip(landPath(LANDS, width, height));
   ctx.globalAlpha = 0.55;
   ctx.translate(0, -4 * unit);
   ctx.scale(1, 0.94);
@@ -178,9 +208,17 @@ export function paintEarth(ctx: CanvasRenderingContext2D, width: number, height:
   ctx.restore();
 
   ctx.save();
+  ctx.clip(landPath(LANDS, width, height));
   ctx.globalAlpha = 0.9;
   fillOutlines(ctx, DESERTS, width, height, () => DESERT);
+  ctx.globalAlpha = 1;
+  strokeOutlines(ctx, LANDS.filter((land) => land.fill === undefined), width, height, SAND, 3 * unit);
+  strokeOutlines(ctx, LANDS, width, height, INK, 1.4 * unit);
   ctx.restore();
+
+  strokeOutlines(ctx, SEAS, width, height, SAND, 4 * unit);
+  strokeOutlines(ctx, SEAS, width, height, INK, 2 * unit);
+  fillOutlines(ctx, SEAS, width, height, () => OCEAN_SHALLOW);
 
   // Polar cap: Antarctica is an outline above; the north gets a soft ice ring.
   const cap = ctx.createLinearGradient(0, 0, 0, (16 / 180) * height);
@@ -202,6 +240,11 @@ export function paintClouds(ctx: CanvasRenderingContext2D, width: number, height
     const y = height * (0.12 + rng.next() * 0.76);
     const r = (14 + rng.next() * 22) * unit;
     const alpha = 0.32 + rng.next() * 0.22;
+    // Keep the Europe/Mediterranean pin cluster cloud-free so Paris/Rome/Berlin read on land.
+    const lon = (x / width) * 360 - 180;
+    const lat = 90 - (y / height) * 180;
+    const reach = (r * 2.5 * 360) / width;
+    if (lat > 26 - reach && lat < 68 + reach && lon > -14 - reach && lon < 46 + reach) continue;
     for (let puffIndex = 0; puffIndex < 3; puffIndex += 1) {
       const px = x + (rng.next() - 0.5) * r * 2.2;
       const py = y + (rng.next() - 0.5) * r * 0.6;
