@@ -1,0 +1,191 @@
+/* GLINT UI styles. Owner: A5. Adapted from ai-studio-export/src/ui/styles/glint.css. Scoped under .glint-ui. */
+
+.glint-ui {
+  --glint-teal: #19a7a0;
+  --glint-stamp-border: 2px dashed rgba(18, 37, 59, 0.35);
+  font-family: ui-rounded, 'Hiragino Maru Gothic ProN', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
+    Arial, sans-serif;
+}
+
+.glint-ui .glint-font-display {
+  letter-spacing: -0.02em;
+}
+
+.glint-ui .glint-tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.glint-ui .passport-card {
+  background: var(--glint-cream);
+  color: var(--glint-navy);
+  border: 2px solid rgba(18, 37, 59, 0.88);
+  box-shadow: 4px 4px 0 0 #12253b;
+  border-radius: 14px;
+}
+
+.glint-ui button {
+  cursor: pointer;
+  font: inherit;
+}
+
+.glint-ui button:disabled {
+  cursor: not-allowed;
+}
+
+.glint-ui .glint-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(18, 37, 59, 0.5) transparent;
+}
+
+@keyframes glint-stamp-slam {
+  0% {
+    transform: scale(2.2) rotate(12deg);
+    opacity: 0;
+  }
+  65% {
+    transform: scale(0.92) rotate(-6deg);
+    opacity: 1;
+  }
+  85% {
+    transform: scale(1.04) rotate(-4deg);
+  }
+  100% {
+    transform: scale(1) rotate(-5deg);
+    opacity: 1;
+  }
+}
+
+.glint-ui .animate-stamp-slam {
+  animation: glint-stamp-slam 0.42s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes glint-cloud-drift {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.glint-ui .animate-cloud-drift {
+  animation: glint-cloud-drift 5s ease-in-out infinite;
+}
+
+@keyframes glint-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.glint-ui .animate-spin-slow {
+  animation: glint-spin 4s linear infinite;
+}
+
+@keyframes glint-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.glint-ui .glint-fade-in {
+  animation: glint-fade-in 0.18s ease-out both;
+}
+
+@keyframes glint-transit {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.glint-ui .animate-transit {
+  animation: glint-transit 1.4s ease-in-out infinite;
+}
+
+/* Reduced motion: honoured from both the OS preference and the in-game setting. */
+@media (prefers-reduced-motion: reduce) {
+  .glint-ui *,
+  .glint-ui *::before,
+  .glint-ui *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.glint-ui.glint-reduced-motion *,
+.glint-ui.glint-reduced-motion *::before,
+.glint-ui.glint-reduced-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+.glint-ui.glint-reduced-motion .animate-stamp-slam,
+.glint-ui.glint-reduced-motion .animate-cloud-drift {
+  transform: none !important;
+}
+
+/* Short landscape phones (844x390): tighten vertical rhythm so nothing clips. */
+.glint-ui .glint-compact-only {
+  display: none;
+}
+@media (max-height: 460px) {
+  .glint-ui .glint-compact-hide {
+    display: none;
+  }
+  .glint-ui .glint-compact-only {
+    display: inline-flex;
+  }
+  .glint-ui .glint-compact-tight {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+  .glint-ui .glint-pause-card {
+    max-width: 40rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    align-items: center;
+    text-align: left;
+  }
+  .glint-ui .glint-pause-card > * + * {
+    margin-top: 0;
+  }
+  .glint-ui .glint-pause-actions {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+  }
+  .glint-ui .glint-results-card {
+    max-width: 52rem;
+  }
+  .glint-ui .glint-results-body {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+  }
+  .glint-ui .glint-results-hero {
+    border-bottom-width: 0;
+    border-right-width: 2px;
+    padding: 0.5rem;
+  }
+  .glint-ui .glint-results-card > header {
+    padding-top: 0.375rem;
+    padding-bottom: 0.375rem;
+  }
+  .glint-ui .glint-results-body > div:last-child {
+    padding: 0.5rem 0.75rem;
+  }
+  .glint-ui .glint-results-body > div:last-child > * + * {
+    margin-top: 0.5rem;
+  }
+}
