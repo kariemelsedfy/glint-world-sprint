@@ -278,7 +278,7 @@ export function TravelDirector({
               textShadow: `3px 3px 0 var(--accent, ${YELLOW})`,
             }}
           />
-          <svg viewBox="0 0 200 80" width="100%" height="auto" aria-hidden style={{ display: 'block', overflow: 'visible' }}>
+          <svg viewBox="0 0 200 80" width="100%" aria-hidden style={{ display: 'block', height: 'auto', overflow: 'visible' }}>
             <path d={ARC_PATH} fill="none" stroke={INK} strokeWidth={3} strokeDasharray="6 6" strokeLinecap="round" opacity={0.35} />
             <circle cx={ARC_START[0]} cy={ARC_START[1]} r={6} fill={LAVENDER} stroke={INK} strokeWidth={3} />
             <circle cx={ARC_END[0]} cy={ARC_END[1]} r={7} fill={`var(--accent, ${YELLOW})`} stroke={INK} strokeWidth={3} />
