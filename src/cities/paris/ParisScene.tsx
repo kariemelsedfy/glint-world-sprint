@@ -363,12 +363,38 @@ function buildFacades(segments: readonly FacadeSegment[], rng: Rng, quality: Qua
       boxes.push({ x: centerX(rect), y: ledgeY + 0.5, z: rect.maxZ + 0.66, sx: width(rect) - 0.4, sy: 0.8, sz: 0.08, color: BALCONY_TONE });
     }
 
+    const streetFace = rect.maxZ >= outer.maxZ - 0.01;
+    // Mansard dormers on the street slope, and zinc ridge caps on steep roofs.
+    if (streetFace && style === 'mansard') {
+      for (let x = rect.minX + 1.6; x <= rect.maxX - 1.6; x += 3.2) {
+        boxes.push({ x, y: height + 0.9, z: eaves.maxZ - 0.55, sx: 1.1, sy: 1.1, sz: 0.9, color: stone });
+        boxes.push({ x, y: height + 0.9, z: eaves.maxZ - 0.08, sx: 0.7, sy: 0.7, sz: 0.06, color: WINDOW_TONE });
+        frustums.push({ x, y: height + 1.6, z: eaves.maxZ - 0.55, sx: 1.3, sy: 0.35, sz: 1.1, color: roof });
+      }
+    }
+    if (style === 'steep') {
+      const alongX = width(rect) >= depth(rect);
+      boxes.push({ x: centerX(eaves), y: height + ROOF_HEIGHT * 1.5 - 0.1, z: centerZ(eaves), sx: alongX ? width(eaves) * 0.45 : 0.4, sy: 0.3, sz: alongX ? 0.4 : depth(eaves) * 0.45, color: IRON_TONE });
+    }
+    // Ground-floor shop awnings on the street face, colours alternating per shopfront.
+    const shopfront = streetFace && rng.next() < 0.55;
+    const awningBase = rng.int(AWNING_TONES.length);
+
     // The chase camera always looks toward -Z, so the -Z facade is never on screen: skip its windows.
     for (let y = 2.6; y <= height - 1.6; y += 3) {
       const rowY = y + 0.8;
-      if (rect.maxZ >= outer.maxZ - 0.01) {
+      if (streetFace) {
+        let column = 0;
         for (let x = rect.minX + 1.4; x <= rect.maxX - 1.4; x += 2.6) {
           boxes.push({ x, y: rowY, z: rect.maxZ + 0.04, sx: 1.1, sy: 1.6, sz: 0.1, color: WINDOW_TONE });
+          if (y === 2.6 && shopfront) {
+            boxes.push({ x, y: 2.1, z: rect.maxZ + 0.55, sx: 1.9, sy: 0.12, sz: 1.1, rx: 0.32, color: AWNING_TONES[(awningBase + (column >> 1)) % AWNING_TONES.length]! });
+          }
+          if (y + 3 > height - 1.6 && height >= 10) {
+            boxes.push({ x, y: rowY - 0.9, z: rect.maxZ + 0.3, sx: 1.6, sy: 0.14, sz: 0.6, color: TRIM_TONE });
+            boxes.push({ x, y: rowY - 0.5, z: rect.maxZ + 0.56, sx: 1.6, sy: 0.7, sz: 0.06, color: BALCONY_TONE });
+          }
+          column += 1;
         }
       }
       if (rect.minX <= outer.minX + 0.01 || rect.maxX >= outer.maxX - 0.01) {
@@ -472,6 +498,59 @@ function buildProps(definition: CityDefinition, rng: Rng, quality: Quality, batc
 
   buildKiosks(definition, rng, batches);
   buildTerraces(definition, rng, batches);
+  buildStreetFurniture(definition, rng, batches);
+}
+
+/** Benches, Morris columns and crosswalks: the small stuff that makes a pavement read as Paris. */
+function buildStreetFurniture(definition: CityDefinition, rng: Rng, batches: Batches): void {
+  for (const road of definition.roads) {
+    const horizontal = width(road) >= depth(road);
+    const length = horizontal ? width(road) : depth(road);
+    for (let along = 4.5; along < length; along += 18) {
+      for (const side of [-1, 1] as const) {
+        const x = horizontal ? road.minX + along : centerX(road) + side * (width(road) / 2 + 1.0);
+        const z = horizontal ? centerZ(road) + side * (depth(road) / 2 + 1.0) : road.minZ + along;
+        if (!isClearForProps(definition, x, z, false)) continue;
+        const ry = horizontal ? 0 : Math.PI / 2;
+        batches.boxes.push({ x, y: 0.5, z, sx: 2.0, sy: 0.14, sz: 0.6, ry, color: '#7a5a3a' });
+        batches.boxes.push({ x, y: 0.9, z, sx: 2.0, sy: 0.5, sz: 0.1, ry, color: '#7a5a3a' });
+        batches.boxes.push({ x, y: 0.22, z, sx: 1.6, sy: 0.44, sz: 0.4, ry, color: INK });
+      }
+    }
+  }
+  // Morris columns: slim dark-green cylinders with a dome and finial, near plaza edges.
+  let columns = 0;
+  for (let attempt = 0; attempt < 80 && columns < 4; attempt += 1) {
+    const road = definition.roads[rng.int(definition.roads.length)]!;
+    const horizontal = width(road) >= depth(road);
+    const side = rng.next() < 0.5 ? -1 : 1;
+    const x = horizontal ? road.minX + rng.next() * width(road) : centerX(road) + side * (width(road) / 2 + 2.2);
+    const z = horizontal ? centerZ(road) + side * (depth(road) / 2 + 2.2) : road.minZ + rng.next() * depth(road);
+    if (!isClearForProps(definition, x, z, true)) continue;
+    columns += 1;
+    batches.cylinders.push({ x, y: 1.6, z, sx: 1.2, sy: 3.2, sz: 1.2, color: KIOSK_TONE });
+    batches.boxes.push({ x, y: 1.6, z: z + 0.58, sx: 0.8, sy: 2.2, sz: 0.08, color: HOT_PINK });
+    batches.spheres.push({ x, y: 3.4, z, sx: 0.75, sy: 0.55, sz: 0.75, color: KIOSK_TONE });
+    batches.cylinders.push({ x, y: 4.1, z, sx: 0.16, sy: 0.9, sz: 0.16, color: YELLOW });
+  }
+  // Zebra crossings where avenues meet boulevards.
+  const roads = definition.roads;
+  for (const a of roads) {
+    if (width(a) >= depth(a)) continue;
+    for (const b of roads) {
+      if (width(b) < depth(b)) continue;
+      for (const z of [b.minZ - 1.4, b.maxZ + 1.4]) {
+        for (let x = a.minX + 0.6; x < a.maxX - 0.3; x += 1.2) {
+          batches.flats.push(flatItem({ minX: x, maxX: x + 0.6, minZ: z - 0.9, maxZ: z + 0.9 }, 0.024, ROAD_LINE_TONE));
+        }
+      }
+      for (const x of [a.minX - 1.4, a.maxX + 1.4]) {
+        for (let z = b.minZ + 0.6; z < b.maxZ - 0.3; z += 1.2) {
+          batches.flats.push(flatItem({ minX: x - 0.9, maxX: x + 0.9, minZ: z, maxZ: z + 0.6 }, 0.024, ROAD_LINE_TONE));
+        }
+      }
+    }
+  }
 }
 
 /** Green newspaper kiosks on a few plaza corners: hexagonal body, cone roof, yellow finial. */
@@ -521,10 +600,25 @@ function buildTerraces(definition: CityDefinition, rng: Rng, batches: Batches): 
   }
 }
 
-function buildRiver(segments: readonly Blocker[], bridges: readonly RectXZ[], quality: Quality, batches: Batches): void {
+function buildRiver(segments: readonly Blocker[], bridges: readonly RectXZ[], rng: Rng, quality: Quality, batches: Batches): void {
   for (const segment of segments) {
     batches.flats.push(flatItem(segment, 0.03, WATER_TONE));
     batches.flats.push(flatItem({ ...segment, minX: segment.minX + 2, maxX: segment.minX + 2.5 }, 0.032, '#7fdcf2'));
+    // Moored péniches: ink hull, cream cabin, one per long segment, kept off the bridge approaches.
+    if (depth(segment) >= 14) {
+      const bz = segment.minZ + 4 + rng.next() * (depth(segment) - 8);
+      const bx = segment.minX + 3.2 + (rng.next() < 0.5 ? 0 : width(segment) - 6.4);
+      batches.boxes.push({ x: bx, y: 0.35, z: bz, sx: 1.8, sy: 0.7, sz: 6.5, color: INK });
+      batches.boxes.push({ x: bx, y: 0.95, z: bz + 0.6, sx: 1.4, sy: 0.6, sz: 3.6, color: CREAM });
+      batches.boxes.push({ x: bx, y: 1.35, z: bz + 1.4, sx: 0.9, sy: 0.3, sz: 1.2, color: HOT_PINK });
+    }
+    if (quality !== 'low') {
+      // Ripple glints: short pale streaks drifting down the current.
+      for (let z = segment.minZ + 2; z < segment.maxZ - 2; z += 4.5) {
+        const x = segment.minX + 3 + rng.next() * (width(segment) - 6);
+        batches.flats.push(flatItem({ minX: x - 0.9, maxX: x + 0.9, minZ: z, maxZ: z + 0.18 }, 0.034, '#8fe6f7'));
+      }
+    }
     // Quays: a lower stone walkway inside the river blocker, a parapet wall at street level, bollards.
     for (const side of [-1, 1] as const) {
       const walk: RectXZ = side < 0 ? { ...segment, maxX: segment.minX + 2 } : { ...segment, minX: segment.maxX - 2 };
@@ -548,6 +642,19 @@ function buildRiver(segments: readonly Blocker[], bridges: readonly RectXZ[], qu
     batches.boxes.push({ x: centerX(bridge), y: 0.12, z: centerZ(bridge), sx: w, sy: 0.24, sz: depth(bridge), color: BRIDGE_TONE });
     batches.boxes.push({ x: centerX(bridge), y: 0.55, z: bridge.minZ + 0.3, sx: w, sy: 0.9, sz: 0.5, color: QUAY_TONE });
     batches.boxes.push({ x: centerX(bridge), y: 0.55, z: bridge.maxZ - 0.3, sx: w, sy: 0.9, sz: 0.5, color: QUAY_TONE });
+    // Balustrade posts and a lamp at each corner of the parapets.
+    for (const z of [bridge.minZ + 0.3, bridge.maxZ - 0.3]) {
+      if (quality !== 'low') {
+        for (let x = bridge.minX; x <= bridge.maxX; x += 2) {
+          batches.boxes.push({ x, y: 1.15, z, sx: 0.4, sy: 0.3, sz: 0.6, color: BRIDGE_TONE });
+        }
+      }
+      for (const x of [bridge.minX - 0.6, bridge.maxX + 0.6]) {
+        batches.cylinders.push({ x, y: 2.1, z, sx: 0.28, sy: 2.4, sz: 0.28, color: LAMP_POST_TONE });
+        batches.boxes.push({ x, y: 3.5, z, sx: 0.7, sy: 0.7, sz: 0.7, color: LAMP_GLOW_TONE });
+        batches.cones.push({ x, y: 4.0, z, sx: 0.9, sy: 0.35, sz: 0.9, color: LAMP_POST_TONE });
+      }
+    }
   }
 }
 
@@ -565,10 +672,33 @@ const CORNERS: readonly (readonly [number, number])[] = [
   [-1, 1],
 ];
 
+/** Champ-de-Mars parterres either side of the tower: lawns split by pale gravel paths, flats only. */
+function buildChampDeMars(definition: CityDefinition, landmark: Landmark, quality: Quality, batches: Batches): void {
+  const { footprint } = landmark;
+  const lawnX = { minX: footprint.minX + 1, maxX: footprint.maxX - 1 };
+  for (const [minZ, maxZ] of [[footprint.maxZ + 2, footprint.maxZ + 9], [footprint.minZ - 9, footprint.minZ - 2]] as const) {
+    batches.flats.push(flatItem({ ...lawnX, minZ, maxZ }, 0.015, '#9edc8f'));
+    batches.flats.push(flatItem({ minX: centerX(footprint) - 1, maxX: centerX(footprint) + 1, minZ, maxZ }, 0.017, PLAZA_TONE));
+    batches.flats.push(flatItem({ ...lawnX, minZ: (minZ + maxZ) / 2 - 0.5, maxZ: (minZ + maxZ) / 2 + 0.5 }, 0.017, PLAZA_TONE));
+  }
+  if (quality === 'low') return;
+  // Yellow pylons mark the four plaza corners so the district reads from the avenue.
+  const plaza = grow(footprint, 7);
+  for (const [x, z] of [[plaza.minX, plaza.minZ], [plaza.maxX, plaza.minZ], [plaza.minX, plaza.maxZ], [plaza.maxX, plaza.maxZ]] as const) {
+    if (!isClearForProps(definition, x, z, true)) continue;
+    batches.boxes.push({ x, y: 0.3, z, sx: 1.2, sy: 0.6, sz: 1.2, color: PLINTH_TONE });
+    batches.cylinders.push({ x, y: 3.1, z, sx: 0.5, sy: 5.0, sz: 0.5, color: INK });
+    batches.boxes.push({ x: x + 0.9, y: 5.0, z, sx: 1.6, sy: 1.0, sz: 0.08, color: YELLOW });
+  }
+}
+
 function buildEiffel(landmark: Landmark, quality: Quality, batches: Batches): void {
   const { boxes } = batches;
   const [cx, cz] = landmark.center;
   batches.flats.push(flatItem(shadowOf(grow(landmark.footprint, -1)), 0.009, SHADOW_TONE));
+  // Warm light band under the first platform: the tower's night-time signature colour.
+  boxes.push({ x: cx, y: EIFFEL_PLATFORM_1 - 0.7, z: cz, sx: 7.5, sy: 0.3, sz: 7.5, color: YELLOW });
+  boxes.push({ x: cx, y: EIFFEL_PLATFORM_2 - 0.6, z: cz, sx: 4.0, sy: 0.25, sz: 4.0, color: YELLOW });
   batches.frustums.push({
     x: cx,
     y: (EIFFEL_PLATFORM_2 + EIFFEL_SHAFT_TOP) / 2,
@@ -638,6 +768,24 @@ function buildLouvreCourtyard(landmark: Landmark, quality: Quality, batches: Bat
   batches.boxes.push({ x: px, y: 0.1, z: pz, sx: PYRAMID_BASE + 1.2, sy: 0.2, sz: PYRAMID_BASE + 1.2, color: LAVENDER });
   batches.cones.push({ x: px, y: PYRAMID_HEIGHT / 2, z: pz, sx: PYRAMID_BASE, sy: PYRAMID_HEIGHT, sz: PYRAMID_BASE, color: PYRAMID_TONE });
   batches.flats.push(flatItem(shadowOf({ minX: px - 3, maxX: px + 3, minZ: pz - 3, maxZ: pz + 3 }), 0.013, SHADOW_TONE));
+  // Arc du Carrousel closing the courtyard's open south side, inside the blocker so it never blocks a route.
+  const arcZ = landmark.footprint.maxZ - 0.8;
+  for (const dx of [-2.2, 0, 2.2]) {
+    batches.boxes.push({ x: px + dx, y: 2.2, z: arcZ, sx: 0.9, sy: 4.4, sz: 1.2, color: LOUVRE_STONE });
+  }
+  batches.boxes.push({ x: px, y: 4.8, z: arcZ, sx: 6.2, sy: 0.9, sz: 1.5, color: LOUVRE_STONE });
+  batches.boxes.push({ x: px, y: 5.55, z: arcZ, sx: 4.0, sy: 0.6, sz: 1.2, color: HOT_PINK });
+  batches.spheres.push({ x: px, y: 6.3, z: arcZ, sx: 0.5, sy: 0.5, sz: 0.5, color: YELLOW });
+  // Tuileries parterres south of the courtyard: lawn quarters around a pale gravel cross (flats only).
+  const garden: RectXZ = { minX: landmark.footprint.minX, maxX: landmark.footprint.maxX, minZ: landmark.footprint.maxZ + 2, maxZ: landmark.footprint.maxZ + 11 };
+  batches.flats.push(flatItem(garden, 0.015, PLAZA_TONE));
+  for (const [gx0, gx1] of [[garden.minX + 0.8, px - 1], [px + 1, garden.maxX - 0.8]] as const) {
+    for (const [gz0, gz1] of [[garden.minZ + 0.8, centerZ(garden) - 0.6], [centerZ(garden) + 0.6, garden.maxZ - 0.8]] as const) {
+      batches.flats.push(flatItem({ minX: gx0, maxX: gx1, minZ: gz0, maxZ: gz1 }, 0.017, '#9edc8f'));
+    }
+  }
+  batches.cylinders.push({ x: px, y: 0.2, z: centerZ(garden), sx: 2.6, sy: 0.4, sz: 2.6, color: LOUVRE_STONE });
+  batches.cylinders.push({ x: px, y: 0.45, z: centerZ(garden), sx: 2.0, sy: 0.1, sz: 2.0, color: CYAN });
   // Three small satellite pyramids and a reflecting-pool strip, as in the Cour Napoléon.
   for (const [sx, sz] of [[-1, 0], [1, 0], [0, 1]] as const) {
     batches.cones.push({ x: px + sx * 6, y: 0.9, z: pz + sz * 5.5, sx: 1.8, sy: 1.8, sz: 1.8, color: PYRAMID_TONE });
@@ -807,6 +955,7 @@ export function ParisScene({ definition, seed, quality }: CitySceneProps) {
         batches.flats.push(flatItem(grow(footprint, 7), 0.012, PLAZA_TONE));
         batches.flats.push(flatItem(grow(footprint, 1), 0.014, COURTYARD_TONE));
         buildEiffel(landmark, quality, batches);
+        buildChampDeMars(definition, landmark, quality, batches);
       } else if (landmark.silhouette === 'museum') {
         buildLouvreWings(footprint, quality, batches);
         buildLouvreCourtyard(landmark, quality, batches);
@@ -827,7 +976,7 @@ export function ParisScene({ definition, seed, quality }: CitySceneProps) {
         }
       }
     }
-    buildRiver(riverSegments, bridges, quality, batches);
+    buildRiver(riverSegments, bridges, rng, quality, batches);
     buildFacades(segments, rng, quality, batches);
     buildProps(definition, rng, quality, batches);
     buildBackdrop(bounds, rng, quality, batches);
