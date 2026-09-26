@@ -4,7 +4,7 @@
 
 Built for the Tech: Europe AI Gaming Hack (26 September 2026). Free, open source, runs entirely in the browser — no account, no backend, no API key, no network calls during play.
 
-- Play (itch.io): _add the itch.io URL here after publishing_
+- Play (itch.io): https://karimelsedfy.itch.io/glint-world-sprint
 - Source: https://github.com/kariemelsedfy/glint-world-sprint
 - Jury docs index: [Documentation for judges](#documentation-for-judges)
 

@@ -1,5 +1,11 @@
 # Release and submission runbook
 
+## Published build
+
+- Live game: https://karimelsedfy.itch.io/glint-world-sprint
+- Submitted revision: tag `v0.1.0-hackathon`
+- Uploaded artifact: `release/glint-world-sprint-itch.zip`, SHA-256 `e9200df5120605ac172f81cb8ec258a5cdf4fda1634b451e6a5735991d63a639`
+
 ## What is required, and what is merely planned
 
 User-provided competition requirements: a **free game on itch.io**, **public GitHub full source**, **comprehensive setup README**, documentation of APIs/frameworks/tools, and enough technical detail for jury evaluation. Stage 1 judges performance, execution, novelty and stickiness; five finalists present for five minutes and three winners are selected. Do not add invented official requirements or weights.
