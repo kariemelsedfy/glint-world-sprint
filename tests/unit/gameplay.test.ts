@@ -162,7 +162,9 @@ describe('target image registry', () => {
     const seen = new Set<string>();
     for (const target of TARGETS) {
       const image = getTargetImage(target.id);
-      expect(image.url, target.id).toMatch(/^data:image\/svg\+xml|\.svg$/);
+      // Bundled local artwork only: an inline data URI or a build-resolved local asset path.
+      expect(image.url, target.id).toMatch(/^data:image\/|\.(svg|png|jpe?g|webp)$/);
+      expect(image.url, target.id).not.toMatch(/^https?:/);
       expect(image.alt.trim().length, target.id).toBeGreaterThan(8);
       expect(seen.has(image.url), `${target.id} shares artwork`).toBe(false);
       seen.add(image.url);
