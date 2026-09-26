@@ -6,18 +6,18 @@
  */
 import type { TargetId } from '@/shared/contracts';
 
-import parisSmile from './targets/paris-smile.svg';
-import parisIron from './targets/paris-iron.svg';
-import parisCrescent from './targets/paris-crescent.svg';
-import gizaCrown from './targets/giza-crown.svg';
-import gizaGuardian from './targets/giza-guardian.svg';
-import gizaBeetle from './targets/giza-beetle.svg';
-import romeArena from './targets/rome-arena.svg';
-import romeLaurel from './targets/rome-laurel.svg';
-import sfCableCar from './targets/sf-cable-car.svg';
-import sfBridge from './targets/sf-bridge.svg';
-import berlinGate from './targets/berlin-gate.svg';
-import berlinTower from './targets/berlin-tower.svg';
+import parisSmile from './targets/paris-smile.jpg';
+import parisIron from './targets/paris-iron.jpg';
+import parisCrescent from './targets/paris-crescent.jpg';
+import gizaCrown from './targets/giza-crown.jpg';
+import gizaGuardian from './targets/giza-guardian.jpg';
+import gizaBeetle from './targets/giza-beetle.jpg';
+import romeArena from './targets/rome-arena.jpg';
+import romeLaurel from './targets/rome-laurel.jpg';
+import sfCableCar from './targets/sf-cable-car.jpg';
+import sfBridge from './targets/sf-bridge.jpg';
+import berlinGate from './targets/berlin-gate.jpg';
+import berlinTower from './targets/berlin-tower.jpg';
 
 export interface TargetImage {
   readonly url: string;
