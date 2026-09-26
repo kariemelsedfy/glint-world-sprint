@@ -99,16 +99,19 @@ export function paintEarth(ctx: CanvasRenderingContext2D, width: number, height:
   ctx.fillStyle = ICE;
   ctx.fillRect(0, 0, width, (12 / 180) * height);
   ctx.fillRect(0, height - (22 / 180) * height, width, (22 / 180) * height);
+
+  // Clouds are baked into the surface: one textured draw instead of a second transparent shell.
+  paintClouds(ctx, width, height);
 }
 
 export function paintClouds(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-  ctx.clearRect(0, 0, width, height);
   const rng = createRng(hashSeed('glint', 'earth-clouds'));
+  const unit = width / 512;
   for (let i = 0; i < 110; i += 1) {
     const x = rng.next() * width;
     const y = height * (0.08 + rng.next() * 0.84);
-    const r = 10 + rng.next() * 26;
-    const alpha = 0.55 + rng.next() * 0.4;
+    const r = (10 + rng.next() * 26) * unit;
+    const alpha = 0.45 + rng.next() * 0.35;
     const puff = ctx.createRadialGradient(x, y, 0, x, y, r);
     puff.addColorStop(0, `rgba(255,255,255,${alpha.toFixed(2)})`);
     puff.addColorStop(0.7, `rgba(255,255,255,${(alpha * 0.5).toFixed(2)})`);
@@ -129,7 +132,7 @@ function makeCanvasTexture(width: number, height: number, paint: (ctx: CanvasRen
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
   texture.wrapS = RepeatWrapping;
-  texture.anisotropy = 4;
+  texture.anisotropy = 1;
   texture.needsUpdate = true;
   return texture;
 }
@@ -138,11 +141,11 @@ export function paintGlow(ctx: CanvasRenderingContext2D, width: number, height: 
   ctx.clearRect(0, 0, width, height);
   const cx = width / 2;
   const cy = height / 2;
-  // Globe occupies the inner ~32% of the plane; the rim glow starts just inside its edge.
-  const glow = ctx.createRadialGradient(cx, cy, width * 0.3, cx, cy, width * 0.5);
-  glow.addColorStop(0, 'rgba(140,210,255,0.8)');
-  glow.addColorStop(0.18, 'rgba(100,180,245,0.42)');
-  glow.addColorStop(0.5, 'rgba(60,120,200,0.12)');
+  // Sampled by the glow annulus (0.985R..1.25R over a 2.5R square): the rim starts at 0.4w and fades by 0.5w.
+  const glow = ctx.createRadialGradient(cx, cy, width * 0.38, cx, cy, width * 0.5);
+  glow.addColorStop(0, 'rgba(140,210,255,0.85)');
+  glow.addColorStop(0.3, 'rgba(100,180,245,0.4)');
+  glow.addColorStop(0.65, 'rgba(60,120,200,0.1)');
   glow.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, width, height);
@@ -150,20 +153,14 @@ export function paintGlow(ctx: CanvasRenderingContext2D, width: number, height: 
 
 let glowTexture: CanvasTexture | null = null;
 export function getGlowTexture(): CanvasTexture {
-  glowTexture ??= makeCanvasTexture(256, 256, paintGlow);
+  glowTexture ??= makeCanvasTexture(128, 128, paintGlow);
   return glowTexture;
 }
 
 let earthTexture: CanvasTexture | null = null;
-let cloudTexture: CanvasTexture | null = null;
 
 /** Lazily created once per page; shared by every GlobeScene mount. */
 export function getEarthTexture(): CanvasTexture {
-  earthTexture ??= makeCanvasTexture(1024, 512, paintEarth);
+  earthTexture ??= makeCanvasTexture(512, 256, paintEarth);
   return earthTexture;
-}
-
-export function getCloudTexture(): CanvasTexture {
-  cloudTexture ??= makeCanvasTexture(512, 256, paintClouds);
-  return cloudTexture;
 }

@@ -21,13 +21,12 @@ import {
   SphereGeometry,
   TorusGeometry,
   Vector3,
-  PlaneGeometry,
   Quaternion,
   AdditiveBlending,
 } from 'three';
-import type { CityId } from '@/shared/contracts';
+import type { CityId, Quality } from '@/shared/contracts';
 import { createRng, hashSeed } from '@/shared/seed';
-import { getCloudTexture, getEarthTexture, getGlowTexture } from '@/world/earthTextures';
+import { getEarthTexture, getGlowTexture } from '@/world/earthTextures';
 import { travelSignal } from '@/world/travelSignal';
 import { easeInOutCubic } from '@/world/travelTimeline';
 
@@ -49,6 +48,8 @@ export interface GlobeCity {
 export interface GlobeSceneProps {
   readonly cities: readonly GlobeCity[];
   readonly interactive: boolean;
+  /** Defaults to 'standard'; 'low' drops the glow, stars and lighting and uses a coarser sphere. */
+  readonly quality?: Quality;
   onSelectCity(id: CityId): void;
 }
 
@@ -72,7 +73,8 @@ export function facingRotation(latDeg: number, lonDeg: number, cameraElevationRa
 
 /** Dot product of a marker's outward normal with the camera direction; hidden hemisphere is negative. */
 export function markerFacing(markerWorld: Vector3, cameraPosition: Vector3): number {
-  return markerWorld.clone().normalize().dot(cameraPosition.clone().normalize());
+  const denominator = markerWorld.length() * cameraPosition.length();
+  return denominator === 0 ? 0 : markerWorld.dot(cameraPosition) / denominator;
 }
 
 function shortestAngle(from: number, to: number): number {
@@ -83,13 +85,15 @@ function shortestAngle(from: number, to: number): number {
 }
 
 // Reusable geometry and materials: created once per module, shared by all mounts.
-const earthGeometry = new SphereGeometry(GLOBE_RADIUS, 64, 48);
-const cloudGeometry = new SphereGeometry(GLOBE_RADIUS * 1.035, 48, 32);
-const glowGeometry = new PlaneGeometry(GLOBE_RADIUS * 3.1, GLOBE_RADIUS * 3.1);
-const pinStemGeometry = new ConeGeometry(0.32, 1.5, 12);
-const pinHeadGeometry = new SphereGeometry(0.62, 18, 14);
-const pinRingGeometry = new RingGeometry(0.85, 1.15, 32);
-const focusRingGeometry = new TorusGeometry(1.45, 0.09, 8, 40);
+const earthGeometry = new SphereGeometry(GLOBE_RADIUS, 40, 28);
+const earthGeometryLow = new SphereGeometry(GLOBE_RADIUS, 28, 20);
+// Glow is an annulus hugging the silhouette so only the halo band pays fragment cost, not the whole disc.
+// RingGeometry maps UVs over a 2*outer square, which matches the radial glow texture exactly.
+const GLOW_OUTER = GLOBE_RADIUS * 1.25;
+const glowGeometry = new RingGeometry(GLOBE_RADIUS * 0.985, GLOW_OUTER, 48, 1);
+const pinStemGeometry = new ConeGeometry(0.32, 1.5, 8);
+const pinHeadGeometry = new SphereGeometry(0.62, 12, 8);
+const focusRingGeometry = new TorusGeometry(1.45, 0.09, 6, 28);
 
 let glowMaterial: MeshBasicMaterial | null = null;
 function getGlowMaterial(): MeshBasicMaterial {
@@ -102,7 +106,6 @@ function getGlowMaterial(): MeshBasicMaterial {
   return glowMaterial;
 }
 const pinStemMaterial = new MeshToonMaterial({ color: new Color('#fff4d6') });
-const pinRingMaterial = new MeshBasicMaterial({ color: new Color('#ffffff'), transparent: true, opacity: 0.85, depthWrite: false });
 const focusRingMaterial = new MeshBasicMaterial({ color: new Color('#ffd166') });
 const starMaterial = new PointsMaterial({ color: new Color('#dfe9ff'), size: 0.28, sizeAttenuation: true, transparent: true, opacity: 0.9 });
 
@@ -148,9 +151,9 @@ interface PinHandle {
   city: GlobeCity;
 }
 
-export function GlobeScene({ cities, interactive, onSelectCity }: GlobeSceneProps) {
+export function GlobeScene({ cities, interactive, onSelectCity, quality = 'standard' }: GlobeSceneProps) {
+  const low = quality === 'low';
   const earthGroup = useRef<Group>(null);
-  const clouds = useRef<Mesh>(null);
   const glow = useRef<Mesh>(null);
   const camera = useThree((state) => state.camera);
   const pins = useRef<PinHandle[]>([]);
@@ -168,19 +171,9 @@ export function GlobeScene({ cities, interactive, onSelectCity }: GlobeSceneProp
   const earthMaterial = useMemo(() => {
     const texture = getEarthTexture();
     texture.offset.x = 0.25;
-    return new MeshToonMaterial({ map: texture });
-  }, []);
-  const cloudMaterial = useMemo(
-    () => new MeshToonMaterial({ map: getCloudTexture(), transparent: true, opacity: 0.85, depthWrite: false }),
-    [],
-  );
-  useEffect(
-    () => () => {
-      earthMaterial.dispose();
-      cloudMaterial.dispose();
-    },
-    [earthMaterial, cloudMaterial],
-  );
+    return low ? new MeshBasicMaterial({ map: texture }) : new MeshToonMaterial({ map: texture });
+  }, [low]);
+  useEffect(() => () => earthMaterial.dispose(), [earthMaterial]);
 
   const cityById = useMemo(() => new Map(cities.map((city) => [city.id, city])), [cities]);
 
@@ -224,7 +217,6 @@ export function GlobeScene({ cities, interactive, onSelectCity }: GlobeSceneProp
     group.rotation.set(tilt.current, spin.current, 0, 'XYZ');
     group.updateMatrixWorld();
 
-    if (clouds.current) clouds.current.rotation.y += dt * 0.02;
     if (glow.current) {
       glow.current.quaternion.copy(camera.quaternion);
       glow.current.scale.setScalar(group.scale.x);
@@ -267,12 +259,11 @@ export function GlobeScene({ cities, interactive, onSelectCity }: GlobeSceneProp
 
   return (
     <group>
-      <points geometry={getStarGeometry()} material={starMaterial} />
-      <mesh ref={glow} geometry={glowGeometry} material={getGlowMaterial()} position={[0, 0, -GLOBE_RADIUS * 0.4]} renderOrder={-1} />
+      {!low && <points geometry={getStarGeometry()} material={starMaterial} />}
+      {!low && <mesh ref={glow} geometry={glowGeometry} material={getGlowMaterial()} position={[0, 0, -GLOBE_RADIUS * 0.4]} renderOrder={-1} />}
 
       <group ref={earthGroup} rotation={[IDLE_TILT_RAD, 0, 0]}>
-        <mesh geometry={earthGeometry} material={earthMaterial} />
-        <mesh ref={clouds} geometry={cloudGeometry} material={cloudMaterial} />
+        <mesh geometry={low ? earthGeometryLow : earthGeometry} material={earthMaterial} />
 
         {cities.map((city) => {
           const anchor = latLonToVec3(city.latDeg, city.lonDeg, GLOBE_RADIUS);
@@ -289,7 +280,6 @@ export function GlobeScene({ cities, interactive, onSelectCity }: GlobeSceneProp
               }}
             >
               {/* Local +Z points outward from the globe centre. */}
-              <mesh geometry={pinRingGeometry} material={pinRingMaterial} position={[0, 0, 0.06]} />
               <mesh geometry={pinStemGeometry} material={pinStemMaterial} position={[0, 0, 0.9]} rotation={[-Math.PI / 2, 0, 0]} />
               <mesh
                 geometry={pinHeadGeometry}
@@ -319,7 +309,13 @@ export function GlobeScene({ cities, interactive, onSelectCity }: GlobeSceneProp
                 position={[0, 0, 3.3]}
                 center
                 zIndexRange={[0, 0]}
-                style={{ pointerEvents: hidden || !interactive ? 'none' : 'auto', opacity: hidden ? 0 : 1, transition: 'opacity 160ms' }}
+                style={{
+                  pointerEvents: hidden || !interactive ? 'none' : 'auto',
+                  opacity: hidden ? 0 : 1,
+                  transition: 'opacity 160ms',
+                  willChange: 'transform',
+                  contain: 'layout paint',
+                }}
               >
                 <button
                   type="button"
@@ -361,7 +357,6 @@ export function GlobeScene({ cities, interactive, onSelectCity }: GlobeSceneProp
                     minWidth: 44,
                     cursor: interactive ? 'pointer' : 'default',
                     whiteSpace: 'nowrap',
-                    boxShadow: active ? '0 6px 18px rgba(255,183,3,0.45)' : '0 4px 12px rgba(0,0,0,0.25)',
                     transform: active ? 'translateY(-2px)' : 'none',
                     transition: 'background 120ms, transform 120ms, box-shadow 120ms',
                     outline: 'none',
