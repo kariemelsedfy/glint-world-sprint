@@ -1,6 +1,6 @@
 /**
  * Application composition. Owner: A0.
- * Owns the single Canvas, the travel cover, the UI adapter and every store dispatch path.
+ * Owns the single Canvas, the UI adapter and every store dispatch path.
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
@@ -26,7 +26,6 @@ export function App() {
   const state = useRunStore();
   const dispatch = state.dispatch;
   const [location, setLocation] = useState<LocationId>('globe');
-  const [covered, setCovered] = useState(false);
   const pendingLevel = useRef<LevelId>(DEFAULT_LEVEL_ID);
 
   useRunClock();
@@ -40,7 +39,6 @@ export function App() {
       pendingLevel.current = levelId;
       resetInput();
       setLocation('globe');
-      setCovered(false);
       dispatch({ type: 'PREPARE_RUN', run: createRunSnapshot(level, objectives, `run-${runCounter}`) });
     },
     [dispatch],
@@ -50,7 +48,6 @@ export function App() {
     (runId: string, transitionId: string) => {
       const travel = useRunStore.getState().travel;
       if (!travel || travel.id !== transitionId || travel.runId !== runId) return;
-      setCovered(true);
       setLocation(travel.to);
       resetInput();
       dispatch({ type: 'TRAVEL_COVERED', runId, transitionId });
@@ -60,7 +57,6 @@ export function App() {
 
   const onComplete = useCallback(
     (runId: string, transitionId: string) => {
-      setCovered(false);
       dispatch({ type: 'TRAVEL_COMPLETE', runId, transitionId });
     },
     [dispatch],
@@ -68,7 +64,6 @@ export function App() {
 
   const onFailure = useCallback(
     (runId: string, transitionId: string, message: string) => {
-      setCovered(false);
       setLocation('globe');
       dispatch({ type: 'TRAVEL_FAILED', runId, transitionId, message });
     },
@@ -99,7 +94,6 @@ export function App() {
       },
       onMenu: () => {
         setLocation('globe');
-        setCovered(false);
         dispatch({ type: 'ABANDON' });
       },
       onSettings: (patch: Partial<Settings>) => dispatch({ type: 'SET_SETTINGS', patch }),
@@ -109,7 +103,6 @@ export function App() {
   );
 
   const model = toUIModel(state);
-  const coverOpacity = state.phase === 'travel' ? (covered ? 1 : 0.999) : 0;
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-[#0b1b2c]">
@@ -126,15 +119,6 @@ export function App() {
           onSelectCity={(id) => dispatch({ type: 'SELECT_CITY', cityId: id })}
         />
       </Canvas>
-
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[#e8f4ff]"
-        style={{
-          opacity: coverOpacity,
-          transition: `opacity ${state.settings.reducedMotion ? 120 : 700}ms ease-in-out`,
-        }}
-      />
 
       <TravelDirector
         travel={state.travel}
