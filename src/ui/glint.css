@@ -461,6 +461,8 @@
   .glint-ui .glint-compact-only { display: inline-flex; }
   .glint-ui .glint-compact-tight { padding-top: 0.5rem; padding-bottom: 0.5rem; }
   .glint-ui .ar-ticket-art { height: 40px; }
+  .glint-ui .ar-objectives { width: min(17.5rem, 50vw); }
+  .glint-ui .ar-objectives .ar-display { font-size: 1rem; }
   .glint-ui .ar-ticket-title { font-size: 0.95rem; }
   .glint-ui .ar-ticket-body { padding: 0.35rem 0.5rem 0.45rem; }
   .glint-ui .ar-wordmark { font-size: 1.75rem !important; }

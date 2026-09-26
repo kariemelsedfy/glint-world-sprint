@@ -47,13 +47,13 @@ export function CityHUD({ model, actions, touch = false }: CityHUDProps) {
         <div className="pointer-events-auto flex flex-wrap items-center gap-2">
           <Clock adjustedMs={model.adjustedMs} penaltyMs={model.penaltyMs} practice={model.practice} size="lg" />
           <StatChip label="Found" value={`${collectedCount}/${model.cards.length}`} tone="yellow" icon={<CheckIcon size={14} />} />
-          <StatChip label="City" value={cityName} tone="cream" className="hidden sm:inline-flex" />
+          <StatChip label="City" value={cityName} tone="cream" className="glint-compact-hide" />
         </div>
 
         {/* Top-right: selected target panel + photo tabs + pause */}
         <div className="pointer-events-auto flex items-start gap-2">
           <ul
-            className="flex flex-col items-end gap-2 w-[min(21rem,60vw)] max-h-[calc(100vh-8.5rem)] overflow-y-auto pl-2 pt-2 list-none m-0 p-0"
+            className="ar-objectives flex flex-col items-end gap-2 w-[min(21rem,60vw)] max-h-[calc(100vh-8.5rem)] overflow-y-auto pl-2 pt-2 list-none m-0 p-0"
             aria-label="Objectives"
           >
             {model.cards.map((card, idx) => {

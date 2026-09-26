@@ -61,8 +61,8 @@ export function MenuScreen({ model, actions }: MenuScreenProps) {
                   </div>
                   <div className="ar-ticket-body">
                     <span className="ar-ticket-title truncate">{level.title}</span>
-                    <span className="ar-ticket-meta">
-                      {meta.difficulty} · {meta.duration} · {trialObjectCount(level.id)} objects
+                    <span className="ar-ticket-meta whitespace-nowrap">
+                      {meta.difficulty} · {meta.duration} · {trialObjectCount(level.id)} obj
                     </span>
                     <span className="ar-ticket-best glint-compact-hide">
                       {best.bestMs !== null ? (

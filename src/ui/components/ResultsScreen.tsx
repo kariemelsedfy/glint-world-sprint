@@ -26,8 +26,8 @@ export function ResultsScreen({ result, model, actions }: ResultsScreenProps) {
         </header>
 
         <div className="glint-results-body flex flex-col">
-          <div className="glint-results-hero p-4 sm:p-6 text-center border-b-[3px] border-[var(--ar-ink)] flex flex-col items-center gap-2">
-            <MedalBadge medal={result.medal} size={72} />
+          <div className="glint-results-hero px-4 py-3 sm:px-6 text-center border-b-[3px] border-[var(--ar-ink)] flex flex-col items-center gap-1.5">
+            <MedalBadge medal={result.medal} size={60} />
             <h2 className="ar-display text-2xl m-0 uppercase text-[var(--ar-purple)]">
               {result.medal === 'complete' ? 'Completed' : `${result.medal} medal`}
             </h2>
@@ -35,7 +35,7 @@ export function ResultsScreen({ result, model, actions }: ResultsScreenProps) {
               <span className="text-[10px] font-extrabold uppercase tracking-widest text-[var(--ar-ink-soft)]" aria-hidden="true">
                 Adjusted time
               </span>
-              <span className="glint-tabular ar-display text-5xl sm:text-6xl leading-none">
+              <span className="glint-tabular ar-display text-5xl leading-none">
                 <span className="sr-only">Adjusted </span>
                 {formatTime(result.adjustedMs)}
               </span>
@@ -43,19 +43,18 @@ export function ResultsScreen({ result, model, actions }: ResultsScreenProps) {
             <StatChip label="Score" value={`${formatScore(result.points)} pts`} tone={MEDAL_TONE[result.medal]} />
           </div>
 
-          <div className="p-4 sm:p-6 space-y-3">
+          <div className="px-4 py-3 sm:px-6 space-y-2.5">
             <p className="glint-tabular ar-panel ar-panel-ink ar-pad-sm text-center text-xs sm:text-sm font-bold m-0 text-[var(--ar-cream)]">
               Active <span className="font-black text-[var(--ar-yellow)]">{formatTime(result.activeMs)}</span> · hints{' '}
               <span className="font-black text-[var(--ar-pink)]">{formatTime(result.hintPenaltyMs)}</span> · travel{' '}
               <span className="font-black text-[var(--ar-cyan)]">{formatTime(result.travelPenaltyMs)}</span>
             </p>
-            {result.practice && <p className="text-xs font-extrabold text-[var(--ar-pink)] text-center m-0">Practice run — not saved as a best.</p>}
 
             <div className="ar-panel ar-panel-lavender ar-pad-sm flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <span className="text-xs font-extrabold block truncate">Best on this device · {currentLevel?.title}</span>
                 <span className="text-[11px] font-semibold text-[var(--ar-ink-soft)]">
-                  {result.practice ? 'Practice runs are not saved' : result.sessionOnly ? 'Session only (storage unavailable)' : 'Saved on this device'}
+                  {result.practice ? 'Practice run (paused) — not saved as a best' : result.sessionOnly ? 'Session only (storage unavailable)' : 'Saved on this device'}
                 </span>
               </div>
               <div className="text-right shrink-0">
@@ -80,11 +79,11 @@ export function ResultsScreen({ result, model, actions }: ResultsScreenProps) {
               </ul>
             )}
 
-            <div className="space-y-3 pt-1">
+            <div className="space-y-2.5 pt-1">
               <ArcadeButton tone="yellow" size="lg" block onClick={actions.onRetry}>
                 Retry
               </ArcadeButton>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2.5">
                 <ArcadeButton tone="cyan" size="sm" onClick={actions.onNextTrial}>
                   Next expedition
                 </ArcadeButton>

@@ -44,18 +44,17 @@ export function BriefingScreen({ model, actions }: BriefingScreenProps) {
           {model.cards.map((card, idx) => (
             <li key={card.targetId}>
               <ArcadePanel pad="sm" className="h-full flex gap-3 items-start">
-                <PhotoCard src={card.imageUrl} alt={card.imageAlt} size="md" className="shrink-0 hidden sm:inline-flex" />
-                <PhotoCard src={card.imageUrl} alt={card.imageAlt} size="sm" className="shrink-0 sm:hidden" />
+                <PhotoCard src={card.imageUrl} alt={card.imageAlt} size="md" className="shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <span className="ar-chip ar-chip-yellow min-h-[26px] px-2 py-0 mb-1">
-                    <span className="ar-chip-label">Target</span>
-                    <span className="ar-chip-value text-sm">{idx + 1}</span>
-                  </span>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="ar-chip ar-chip-yellow min-h-[26px] px-2 py-0">
+                      <span className="ar-chip-label">Target</span>
+                      <span className="ar-chip-value text-sm">{idx + 1}</span>
+                    </span>
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[var(--ar-purple)] glint-compact-hide">City unknown</span>
+                  </div>
                   <h2 className="ar-display text-xl sm:text-2xl m-0 leading-none">{card.title}</h2>
                   <p className="mt-1.5 text-xs sm:text-sm font-semibold leading-snug">“{card.clue}”</p>
-                  <p className="mt-1.5 text-[10px] font-extrabold uppercase tracking-wider text-[var(--ar-purple)] glint-compact-hide">
-                    City unknown · paid hints in-city
-                  </p>
                 </div>
               </ArcadePanel>
             </li>

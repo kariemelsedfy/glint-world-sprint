@@ -58,7 +58,7 @@ export function ObjectivePanel({ card, index, onHint, compact = false }: Objecti
 
       {!card.collected && (
         <div className="pt-2 border-t-[3px] border-dashed border-[var(--ar-ink-faint)] space-y-1.5">
-          <div className="grid grid-cols-3 gap-1" role="list" aria-label="Hint tiers">
+          <div className={`grid grid-cols-3 gap-1 ${compact ? 'glint-compact-hide' : ''}`} role="list" aria-label="Hint tiers">
             {HINT_COST_MS.map((cost, idx) => {
               const tier = idx + 1;
               const bought = card.hintTier >= tier;
@@ -77,7 +77,7 @@ export function ObjectivePanel({ card, index, onHint, compact = false }: Objecti
                   }`}
                 >
                   <span className="block uppercase tracking-wider">Tier {tier}</span>
-                  <span className="block glint-tabular">{bought ? 'Bought' : `+${formatPenalty(cost)}`}</span>
+                  <span className="block glint-tabular">{bought ? 'Bought' : formatPenalty(cost)}</span>
                 </div>
               );
             })}
