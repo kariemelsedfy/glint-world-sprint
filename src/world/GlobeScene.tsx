@@ -21,8 +21,10 @@ import {
   SphereGeometry,
   TorusGeometry,
   Vector3,
+  Matrix4,
   Quaternion,
   AdditiveBlending,
+  BackSide,
 } from 'three';
 import type { CityId, Quality } from '@/shared/contracts';
 import { createRng, hashSeed } from '@/shared/seed';
@@ -36,6 +38,16 @@ const IDLE_TILT_RAD = 0.32;
 const DIVE_SCALE = 2.45;
 /** Pins facing away from the camera beyond this dot product are hidden and unclickable. */
 const VISIBLE_DOT = 0.12;
+/** Cities closer than this (degrees, great-circle-ish) fan their labels apart instead of stacking. */
+const CLUSTER_DEG = 16;
+/** Labels whose screen centres sit closer than this many CSS px collapse to the higher-priority pin. */
+const LABEL_COLLAPSE_PX = 78;
+const LABEL_LIFT = 0.9;
+
+const INK = '#211333';
+const CREAM = '#fff5e9';
+const YELLOW = '#ffd963';
+const LAVENDER = '#b6a1e8';
 
 export interface GlobeCity {
   readonly id: CityId;
@@ -77,6 +89,38 @@ export function markerFacing(markerWorld: Vector3, cameraPosition: Vector3): num
   return denominator === 0 ? 0 : markerWorld.dot(cameraPosition) / denominator;
 }
 
+/**
+ * Per-city label offset in the pin's tangent plane (local x right, y up, in globe units). Cities inside a
+ * cluster push away from the cluster centroid so three European labels read as three, not one stack.
+ */
+export function labelOffsets(cities: readonly GlobeCity[]): Map<CityId, readonly [number, number]> {
+  const result = new Map<CityId, readonly [number, number]>();
+  for (const city of cities) {
+    let sumLat = 0;
+    let sumLon = 0;
+    let count = 0;
+    for (const other of cities) {
+      const dLat = other.latDeg - city.latDeg;
+      const dLon = (other.lonDeg - city.lonDeg) * Math.cos((city.latDeg * Math.PI) / 180);
+      if (Math.hypot(dLat, dLon) < CLUSTER_DEG) {
+        sumLat += other.latDeg;
+        sumLon += other.lonDeg;
+        count += 1;
+      }
+    }
+    if (count <= 1) {
+      result.set(city.id, [0, LABEL_LIFT]);
+      continue;
+    }
+    const awayLat = city.latDeg - sumLat / count;
+    const awayLon = (city.lonDeg - sumLon / count) * Math.cos((city.latDeg * Math.PI) / 180);
+    const length = Math.hypot(awayLat, awayLon) || 1;
+    // Local +x is east, +y is north on the outward-facing pin frame.
+    result.set(city.id, [(awayLon / length) * LABEL_LIFT * 0.9, (awayLat / length) * LABEL_LIFT * 0.9 + 0.6]);
+  }
+  return result;
+}
+
 function shortestAngle(from: number, to: number): number {
   let delta = (to - from) % (Math.PI * 2);
   if (delta > Math.PI) delta -= Math.PI * 2;
@@ -91,9 +135,11 @@ const earthGeometryLow = new SphereGeometry(GLOBE_RADIUS, 28, 20);
 // RingGeometry maps UVs over a 2*outer square, which matches the radial glow texture exactly.
 const GLOW_OUTER = GLOBE_RADIUS * 1.25;
 const glowGeometry = new RingGeometry(GLOBE_RADIUS * 0.985, GLOW_OUTER, 48, 1);
-const pinStemGeometry = new ConeGeometry(0.32, 1.5, 8);
-const pinHeadGeometry = new SphereGeometry(0.62, 12, 8);
-const focusRingGeometry = new TorusGeometry(1.45, 0.09, 6, 28);
+const pinStemGeometry = new ConeGeometry(0.3, 1.4, 8);
+const pinHeadGeometry = new SphereGeometry(0.55, 12, 8);
+// Slightly larger back-face sphere gives the head a chunky ink outline for free (no post-processing).
+const pinOutlineGeometry = new SphereGeometry(0.68, 12, 8);
+const focusRingGeometry = new TorusGeometry(1.25, 0.1, 6, 28);
 
 let glowMaterial: MeshBasicMaterial | null = null;
 function getGlowMaterial(): MeshBasicMaterial {
@@ -105,15 +151,16 @@ function getGlowMaterial(): MeshBasicMaterial {
   });
   return glowMaterial;
 }
-const pinStemMaterial = new MeshToonMaterial({ color: new Color('#fff4d6') });
-const focusRingMaterial = new MeshBasicMaterial({ color: new Color('#ffd166') });
+const pinStemMaterial = new MeshToonMaterial({ color: new Color(CREAM) });
+const pinOutlineMaterial = new MeshBasicMaterial({ color: new Color(INK), side: BackSide });
+const focusRingMaterial = new MeshBasicMaterial({ color: new Color(YELLOW) });
 const starMaterial = new PointsMaterial({ color: new Color('#dfe9ff'), size: 0.28, sizeAttenuation: true, transparent: true, opacity: 0.9 });
 
 const pinHeadMaterials = new Map<string, MeshToonMaterial>();
 function pinHeadMaterial(color: string): MeshToonMaterial {
   let material = pinHeadMaterials.get(color);
   if (!material) {
-    material = new MeshToonMaterial({ color: new Color(color), emissive: new Color(color), emissiveIntensity: 0.28 });
+    material = new MeshToonMaterial({ color: new Color(color), emissive: new Color(color), emissiveIntensity: 0.28, toneMapped: false });
     pinHeadMaterials.set(color, material);
   }
   return material;
@@ -140,15 +187,30 @@ function getStarGeometry(): BufferGeometry {
 }
 
 const scratch = new Vector3();
-const OUTWARD = new Vector3(0, 0, 1);
+const UP = new Vector3(0, 1, 0);
+const scratchEast = new Vector3();
+const scratchNorth = new Vector3();
+const scratchMatrix = new Matrix4();
 
+/** Pin frame: local +z outward, +y north, +x east, so label offsets stay upright on the globe. */
 function outwardQuaternion(anchor: readonly [number, number, number]): Quaternion {
-  return new Quaternion().setFromUnitVectors(OUTWARD, new Vector3(...anchor).normalize());
+  const normal = new Vector3(...anchor).normalize();
+  scratchEast.crossVectors(UP, normal).normalize();
+  if (scratchEast.lengthSq() < 1e-6) scratchEast.set(1, 0, 0);
+  scratchNorth.crossVectors(normal, scratchEast).normalize();
+  scratchMatrix.makeBasis(scratchEast, scratchNorth, normal);
+  return new Quaternion().setFromRotationMatrix(scratchMatrix);
 }
 
 interface PinHandle {
   group: Group;
   city: GlobeCity;
+  label: Group;
+  screen: Vector3;
+}
+
+function sameIds(a: readonly CityId[], b: readonly CityId[]): boolean {
+  return a.length === b.length && a.every((id, index) => b[index] === id);
 }
 
 export function GlobeScene({ cities, interactive, onSelectCity, quality = 'standard' }: GlobeSceneProps) {
@@ -165,13 +227,20 @@ export function GlobeScene({ cities, interactive, onSelectCity, quality = 'stand
   const [focusedId, setFocusedId] = useState<CityId | null>(null);
   const [hiddenIds, setHiddenIds] = useState<readonly CityId[]>([]);
   const hiddenRef = useRef<readonly CityId[]>([]);
+  const [collapsedIds, setCollapsedIds] = useState<readonly CityId[]>([]);
+  const collapsedRef = useRef<readonly CityId[]>([]);
+  const size = useThree((state) => state.size);
+  const offsets = useMemo(() => labelOffsets(cities), [cities]);
   const [travellingState, setTravellingState] = useState(false);
   const travellingRef = useRef(false);
 
   const earthMaterial = useMemo(() => {
     const texture = getEarthTexture();
     texture.offset.x = 0.25;
-    return low ? new MeshBasicMaterial({ map: texture }) : new MeshToonMaterial({ map: texture });
+    // Skip the renderer's filmic tone mapping so the hand-painted palette stays saturated.
+    return low
+      ? new MeshBasicMaterial({ map: texture, toneMapped: false })
+      : new MeshToonMaterial({ map: texture, color: new Color('#b9bcc6'), toneMapped: false });
   }, [low]);
   useEffect(() => () => earthMaterial.dispose(), [earthMaterial]);
 
@@ -223,25 +292,52 @@ export function GlobeScene({ cities, interactive, onSelectCity, quality = 'stand
     }
 
     // Marker hover/focus scale and hidden-hemisphere culling (state only flips on change).
-    let hiddenChanged = false;
     const nextHidden: CityId[] = [];
-    for (const pin of pins.current) {
+    const list = pins.current;
+    for (const pin of list) {
       pin.group.getWorldPosition(scratch);
       const facingDot = markerFacing(scratch, camera.position);
       const visible = facingDot > VISIBLE_DOT;
       pin.group.visible = visible;
       if (!visible) nextHidden.push(pin.city.id);
       const active = hovered.current === pin.city.id || focused.current === pin.city.id;
-      const goal = travelling ? 0.001 : active ? 1.28 : 1;
+      const goal = travelling ? 0.001 : active ? 1.22 : 1;
       const current = pin.group.scale.x;
       pin.group.scale.setScalar(current + (goal - current) * (1 - Math.exp(-dt * 12)));
+      // Screen position of the label anchor, in CSS px, for overlap collapsing below.
+      pin.label.getWorldPosition(pin.screen).project(camera);
+      pin.screen.x *= size.width / 2;
+      pin.screen.y *= size.height / 2;
     }
-    if (nextHidden.length !== hiddenRef.current.length || nextHidden.some((id, index) => hiddenRef.current[index] !== id)) {
-      hiddenChanged = true;
-    }
-    if (hiddenChanged) {
+    if (!sameIds(nextHidden, hiddenRef.current)) {
       hiddenRef.current = nextHidden;
       setHiddenIds(nextHidden);
+    }
+
+    // Collapse overlapping labels: earlier pins in `cities` win, active (hovered/focused) always wins.
+    const nextCollapsed: CityId[] = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const pin = list[i];
+      if (!pin.group.visible) continue;
+      const isActive = hovered.current === pin.city.id || focused.current === pin.city.id;
+      if (isActive) continue;
+      for (let j = 0; j < list.length; j += 1) {
+        if (i === j) continue;
+        const other = list[j];
+        if (!other.group.visible || nextCollapsed.includes(other.city.id)) continue;
+        const otherActive = hovered.current === other.city.id || focused.current === other.city.id;
+        if (!otherActive && j > i) continue;
+        const dx = pin.screen.x - other.screen.x;
+        const dy = pin.screen.y - other.screen.y;
+        if (Math.abs(dx) < LABEL_COLLAPSE_PX && Math.abs(dy) < LABEL_COLLAPSE_PX * 0.45) {
+          nextCollapsed.push(pin.city.id);
+          break;
+        }
+      }
+    }
+    if (!sameIds(nextCollapsed, collapsedRef.current)) {
+      collapsedRef.current = nextCollapsed;
+      setCollapsedIds(nextCollapsed);
     }
   });
 
@@ -265,26 +361,31 @@ export function GlobeScene({ cities, interactive, onSelectCity, quality = 'stand
       <group ref={earthGroup} rotation={[IDLE_TILT_RAD, 0, 0]}>
         <mesh geometry={low ? earthGeometryLow : earthGeometry} material={earthMaterial} />
 
-        {cities.map((city) => {
+        {cities.map((city, index) => {
           const anchor = latLonToVec3(city.latDeg, city.lonDeg, GLOBE_RADIUS);
           const hidden = travellingState || hiddenIds.includes(city.id);
           const active = hoveredId === city.id || focusedId === city.id;
+          const collapsed = !active && collapsedIds.includes(city.id);
+          const [offsetX, offsetY] = offsets.get(city.id) ?? [0, LABEL_LIFT];
           return (
             <group
               key={city.id}
               position={anchor}
               quaternion={outwardQuaternion(anchor)}
               ref={(node) => {
-                pins.current = pins.current.filter((pin) => pin.city.id !== city.id);
-                if (node) pins.current.push({ group: node, city });
+                const label = node?.children.find((child): child is Group => child instanceof Group && child.name === 'label');
+                const existing = pins.current.findIndex((pin) => pin.city.id === city.id);
+                if (existing >= 0) pins.current.splice(existing, 1);
+                if (node && label) pins.current.splice(Math.min(index, pins.current.length), 0, { group: node, city, label, screen: new Vector3() });
               }}
             >
               {/* Local +Z points outward from the globe centre. */}
-              <mesh geometry={pinStemGeometry} material={pinStemMaterial} position={[0, 0, 0.9]} rotation={[-Math.PI / 2, 0, 0]} />
+              <mesh geometry={pinStemGeometry} material={pinStemMaterial} position={[0, 0, 0.85]} rotation={[-Math.PI / 2, 0, 0]} />
+              <mesh geometry={pinOutlineGeometry} material={pinOutlineMaterial} position={[0, 0, 1.85]} />
               <mesh
                 geometry={pinHeadGeometry}
                 material={pinHeadMaterial(city.accentColor)}
-                position={[0, 0, 1.95]}
+                position={[0, 0, 1.85]}
                 onPointerOver={(event) => {
                   if (!interactive || hidden) return;
                   event.stopPropagation();
@@ -304,15 +405,16 @@ export function GlobeScene({ cities, interactive, onSelectCity, quality = 'stand
                   select(city.id);
                 }}
               />
-              <mesh geometry={focusRingGeometry} material={focusRingMaterial} position={[0, 0, 1.95]} visible={active} />
+              <mesh geometry={focusRingGeometry} material={focusRingMaterial} position={[0, 0, 1.85]} visible={active} />
+              <group name="label" position={[offsetX, offsetY, 2.6]} />
               <Html
-                position={[0, 0, 3.3]}
+                position={[offsetX, offsetY, 2.6]}
                 center
                 zIndexRange={[0, 0]}
                 style={{
-                  pointerEvents: hidden || !interactive ? 'none' : 'auto',
-                  opacity: hidden ? 0 : 1,
-                  transition: 'opacity 160ms',
+                  pointerEvents: hidden || !interactive || collapsed ? 'none' : 'auto',
+                  opacity: hidden || collapsed ? 0 : 1,
+                  transition: 'opacity 140ms',
                   willChange: 'transform',
                   contain: 'layout paint',
                 }}
@@ -321,7 +423,7 @@ export function GlobeScene({ cities, interactive, onSelectCity, quality = 'stand
                   type="button"
                   data-testid={`globe-pin-${city.id}`}
                   aria-label={`Travel to ${city.label}`}
-                  aria-hidden={hidden}
+                  aria-hidden={hidden || collapsed}
                   tabIndex={hidden || !interactive ? -1 : 0}
                   disabled={!interactive}
                   onClick={() => select(city.id)}
@@ -346,18 +448,21 @@ export function GlobeScene({ cities, interactive, onSelectCity, quality = 'stand
                     setHoveredId(null);
                   }}
                   style={{
-                    font: '600 15px/1 system-ui, sans-serif',
-                    letterSpacing: '0.02em',
-                    color: '#0b1b2c',
-                    background: active ? '#ffd166' : 'rgba(255,255,255,0.92)',
-                    border: `2px solid ${active ? '#ffb703' : city.accentColor}`,
-                    borderRadius: 999,
-                    padding: '9px 16px',
+                    font: '800 15px/1 system-ui, sans-serif',
+                    letterSpacing: '0.03em',
+                    textTransform: 'uppercase',
+                    color: INK,
+                    background: active ? YELLOW : CREAM,
+                    border: `3px solid ${INK}`,
+                    borderRadius: 8,
+                    padding: '10px 14px',
                     minHeight: 44,
                     minWidth: 44,
                     cursor: interactive ? 'pointer' : 'default',
                     whiteSpace: 'nowrap',
-                    transform: active ? 'translateY(-2px)' : 'none',
+                    // Hard offset shadow is a box-shadow with no blur: cheap to paint, reads as chunky.
+                    boxShadow: active ? `0 3px 0 ${INK}, 0 0 0 3px ${LAVENDER}` : `0 5px 0 ${INK}`,
+                    transform: active ? 'translateY(-3px)' : 'none',
                     transition: 'background 120ms, transform 120ms, box-shadow 120ms',
                     outline: 'none',
                   }}
