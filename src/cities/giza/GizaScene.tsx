@@ -23,6 +23,7 @@ import {
   Object3D,
   PlaneGeometry,
   SphereGeometry,
+  Vector3,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { CitySceneProps } from '@/cities/CityScenery';
@@ -45,6 +46,12 @@ const PALM_LEAF = '#5fae62';
 const ROCK = '#c8a677';
 const INK = '#211333';
 const SAND_HAZE = '#f9dfc4';
+/** Pale band between the far dunes and the sky colour (owned by SceneHost) for a cheap depth cue. */
+const HAZE_BAND = '#e3dfe8';
+/** Sun-lit / shaded stone for the hero pyramids (baked per-vertex from the SceneHost sun direction). */
+const PYRAMID_LIT = '#f3cf92';
+const PYRAMID_SHADE = '#b3743f';
+const SUN = new Vector3(40, 80, 30).normalize();
 const SHADE = '#c48c44';
 /** Arcade palette fabrics: hot pink, cyan, action yellow, warm cream. */
 const CANOPY_COLORS = ['#f43fab', TEAL, GOLD, PLASTER] as const;
@@ -141,6 +148,35 @@ class Baker {
   }
 
   /** Adds an already-transformed geometry (used for the vertex-coloured ground). */
+  /**
+   * Like `place`, but bakes a two-tone lit/shade colour per vertex from the face normal and the sun,
+   * into the shared vertex-colour bucket. Faces away from the sun go dark so silhouettes read from any
+   * district without lights or shadow maps.
+   */
+  tinted(source: BufferGeometry, position: Vec3, scale: Vec3, rotation: Vec3, lit: Color, shade: Color, outline = this.outlines): void {
+    this.helper.position.set(...position);
+    this.helper.rotation.set(...rotation);
+    this.helper.scale.set(...scale);
+    this.helper.updateMatrix();
+    const geometry = source.clone();
+    geometry.applyMatrix4(this.helper.matrix.premultiply(this.parent));
+    const normals = geometry.getAttribute('normal');
+    const colors = new Float32Array(normals.count * 3);
+    const n = new Vector3();
+    const c = new Color();
+    for (let i = 0; i < normals.count; i += 1) {
+      n.set(normals.getX(i), normals.getY(i), normals.getZ(i));
+      const light = Math.min(1, Math.max(0, n.dot(SUN) * 1.2 + 0.15));
+      c.copy(shade).lerp(lit, light);
+      colors[i * 3] = c.r;
+      colors[i * 3 + 1] = c.g;
+      colors[i * 3 + 2] = c.b;
+    }
+    geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
+    this.add(MAT.dunes, geometry);
+    if (outline) this.push(source, MAT.ink, position, [scale[0] + OUTLINE, scale[1] + OUTLINE, scale[2] + OUTLINE], rotation);
+  }
+
   add(material: MeshLambertMaterial, geometry: BufferGeometry): void {
     const list = this.parts.get(material);
     if (list) list.push(geometry);
@@ -189,9 +225,10 @@ function bakeGround(b: Baker, { bounds, roads }: Pick<CityDefinition, 'bounds' |
     const x = positions.getX(i);
     const y = positions.getY(i);
     const ripple = Math.sin(x * 0.11 + y * 0.07) * 0.5 + Math.sin(x * 0.031 - y * 0.045) * 0.5;
-    const shade = 1 + ripple * 0.07 + (rng.next() - 0.5) * 0.04;
-    // Sand-to-sky gradient: the far apron fades towards the hazy horizon tone.
+    // Sand-to-sky gradient: the far apron fades towards the hazy horizon tone, with bolder dune
+    // ripples out there (the playable area keeps the subtle shading so pads and props stay legible).
     const distance = Math.min(1, Math.max(0, (Math.hypot(x, y) - half * 0.8) / (half * 1.6)));
+    const shade = 1 + ripple * (0.07 + distance * 0.1) + (rng.next() - 0.5) * 0.04;
     tint.copy(sand).multiplyScalar(shade).lerp(haze, distance * distance);
     colors[i * 3] = tint.r;
     colors[i * 3 + 1] = tint.g;
@@ -240,12 +277,16 @@ function bakePads(b: Baker, definition: CityDefinition): void {
 }
 
 /* ---------- landmarks, each strictly inside its blocker rect ---------- */
+const PYRAMID_LIT_C = new Color(PYRAMID_LIT);
+const PYRAMID_SHADE_C = new Color(PYRAMID_SHADE);
+const HAZE_BAND_C = new Color(HAZE_BAND);
+
 function bakePyramid(b: Baker, rect: RectXZ, height: number, low: boolean): void {
   const [w, d] = sizeOf(rect);
   const [cx, cz] = centerOf(rect);
   const base = Math.min(w, d);
   b.shadow(cx, cz, w / 2, d / 2);
-  b.place(UNIT_PYRAMID, MAT.stone, [cx, height / 2, cz], [base, height, base], [0, Math.PI / 4, 0]);
+  b.tinted(UNIT_PYRAMID, [cx, height / 2, cz], [base, height, base], [0, Math.PI / 4, 0], PYRAMID_LIT_C, PYRAMID_SHADE_C);
   // Highlighted gold pyramidion on the top face.
   b.place(UNIT_PYRAMID, MAT.gold, [cx, height * 0.93, cz], [base * 0.14, height * 0.14, base * 0.14], [0, Math.PI / 4, 0], false);
   if (low) return;
@@ -366,8 +407,12 @@ function bakeMarket(b: Baker, rect: RectXZ, seed: number, low: boolean): void {
         for (const px of [-1.5, 1.5]) {
           for (const pz of [-1, 1]) b.place(UNIT_CYLINDER, MAT.stoneDark, [px, 1.6, pz], [0.18, 3.2, 0.18], [0, 0, 0], false);
         }
-        // Scalloped awning fringe under the canopy.
+        // Scalloped awning fringe under the canopy, and hanging fabric off the back post.
         b.box(0, 3.05, 1.55, 4.2, 0.35, 0.25, material, 0, false);
+        b.box(-1.5, 1.6, -1.3, 0.25, 2.6, 0.8, goods, 0, false);
+        // Barrel or basket beside the stall.
+        if (rng.next() < 0.5) b.place(UNIT_CYLINDER, MAT.clay, [2.1, 0.45, -0.6], [0.9, 0.9, 0.9]);
+        else b.place(UNIT_SPHERE, MAT.gold, [2.1, 0.3, -0.6], [1.1, 0.6, 1.1]);
       }
       b.place(UNIT_PYRAMID, material, [0, 3.7, 0], [4.4, 1.4, 3.2], [0, Math.PI / 4, 0]);
       b.end();
@@ -468,6 +513,12 @@ function bakeVillage(b: Baker, rect: RectXZ, seed: number, low: boolean): void {
       b.box(x, 0.3 + h * 0.55, z + hd / 2 + 0.25, hw * 0.6, 0.2, 0.55, rng.pick(MAT.canopies), 0, false);
       b.box(x, 0.3, z + hd / 2 - 0.05, 1, 1.8, 0.1, MAT.ink, 0, false);
       if (rng.next() < 0.6) bakePots(b, x + hw / 2 - 0.3, 0.3, z - hd / 2 + 0.4, rng);
+      // Rooftop life: a ladder up the side, a vent, and laundry drying on the parapet.
+      b.box(x - hw / 2 - 0.15, 0.3 + h / 2, z - 0.4, 0.15, h + 0.6, 0.9, MAT.stoneDark, 0, false);
+      if (rng.next() < 0.5) b.place(UNIT_CYLINDER, MAT.clay, [x - hw * 0.3, 0.6 + h + 0.5, z - hd * 0.3], [0.5, 1, 0.5], [0, 0, 0], false);
+      for (let l = 0; l < 2; l += 1) {
+        b.box(x + hw / 2 - 0.2, 0.6 + h + 0.7, z - hd * 0.3 + l * 0.9, 0.1, 0.7, 0.7, rng.pick(MAT.canopies), 0, false);
+      }
     }
   }
   b.place(UNIT_SPHERE, MAT.teal, [cx, 6.4, cz], [3.6, 3, 3.6]);
@@ -493,6 +544,14 @@ function bakeHorizon(b: Baker, bounds: RectXZ, seed: number): void {
     const radius = half + 44 + rng.next() * 16;
     const scale = 18 + rng.next() * 14;
     b.place(UNIT_SPHERE, MAT.path, [Math.cos(angle) * radius, -scale * 0.12, Math.sin(angle) * radius], [scale * 2.6, scale * 0.5, scale * 1.8], [0, 0, 0], false);
+  }
+  // Haze band: a ring of very pale mounds behind the far dunes so ground blends into the sky colour.
+  const band = 12;
+  for (let i = 0; i < band; i += 1) {
+    const angle = (i / band) * Math.PI * 2 + 0.15;
+    const radius = half + 78 + rng.next() * 10;
+    const scale = 26 + rng.next() * 10;
+    b.tinted(UNIT_SPHERE, [Math.cos(angle) * radius, -scale * 0.14, Math.sin(angle) * radius], [scale * 3, scale * 0.5, scale * 2], [0, 0, 0], HAZE_BAND_C, HAZE_BAND_C, false);
   }
   // Low mudbrick town on the southern horizon with lit roof slabs.
   for (let i = 0; i < 14; i += 1) {
@@ -566,6 +625,18 @@ function bakeDistricts(b: Baker, definition: CityDefinition, seed: number): void
           b.shadow(x, z, 1.1, 0.9);
           b.box(x, 0, z, 2, 1.1, 1.4, rng.pick([MAT.stoneLight, MAT.stone]), turn);
           if (rng.next() < 0.4) b.box(x, 1.1, z, 1.4, 0.9, 1.1, MAT.stoneLight, turn);
+        }
+        // Wooden sleds (two runners and a deck) and a standing stele or two.
+        for (const [x, z] of scatterIn(circle, definition, keepOut, rng, 3)) {
+          const turn = rng.next() * Math.PI;
+          b.begin([x, 0, z], [0, turn, 0]);
+          for (const rx of [-0.9, 0.9]) b.box(rx, 0, 0, 0.25, 0.3, 3.2, MAT.stoneDark, 0, false);
+          b.box(0, 0.3, 0, 2.2, 0.2, 2.6, MAT.clay);
+          b.end();
+        }
+        for (const [x, z] of scatterIn(circle, definition, keepOut, rng, 2)) {
+          b.shadow(x, z, 0.8, 0.8);
+          b.box(x, 0, z, 1.2, 4 + rng.next() * 2, 0.7, MAT.stoneLight, rng.next() * Math.PI);
         }
         break;
       }
@@ -651,6 +722,11 @@ export function GizaScene({ definition, seed, quality }: CitySceneProps) {
   const low = quality === 'low';
 
   // Independent seeds per group: rebuilding one group never reshuffles another.
+  const rocks = useMemo(
+    () => scatterRocks(definition, createRng(hashSeed(seed, definition.id, 'rocks')), low ? 0 : 60),
+    [definition, seed, low],
+  );
+
   const baked = useMemo(() => {
     const b = new Baker();
     // Outlines and drop shadows are the arcade look; low quality drops both (layout unchanged).
@@ -661,15 +737,12 @@ export function GizaScene({ definition, seed, quality }: CitySceneProps) {
     if (!low) {
       bakeDistricts(b, definition, seed);
       bakeHorizon(b, definition.bounds, hashSeed(seed, definition.id, 'horizon'));
+      // Rock drop shadows ride in the shared shade bucket, so the instanced rocks stay one draw call.
+      for (const rock of rocks) b.shadow(rock.x, rock.z, rock.scale * 0.55, rock.scale * 0.55);
     }
     return b.bake();
-  }, [definition, seed, low]);
+  }, [definition, seed, low, rocks]);
   useEffect(() => () => baked.forEach((part) => part.geometry.dispose()), [baked]);
-
-  const rocks = useMemo(
-    () => scatterRocks(definition, createRng(hashSeed(seed, definition.id, 'rocks')), low ? 0 : 60),
-    [definition, seed, low],
-  );
 
   return (
     <group>
