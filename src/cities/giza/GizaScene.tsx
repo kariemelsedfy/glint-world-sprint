@@ -19,6 +19,8 @@ import {
   DodecahedronGeometry,
   InstancedMesh,
   Matrix4,
+  Material,
+  MeshBasicMaterial,
   MeshLambertMaterial,
   Object3D,
   PlaneGeometry,
@@ -57,11 +59,15 @@ const SHADE = '#c48c44';
 const CANOPY_COLORS = ['#f43fab', TEAL, GOLD, PLASTER] as const;
 /** Inverted-hull outline thickness in world units (~3px at the gameplay camera distance). */
 const OUTLINE = 0.22;
+/** Props smaller than this (max scale) skip the ink outline: unreadable from the camera, pure fill. */
+const OUTLINE_MIN_SIZE = 1.4;
+/** Unlit buckets (ground, tinted heroes, shadows) bake the app lighting in so they skip per-fragment lights. */
+const BAKED_LIGHT = 0.63;
 
 /* ---------- shared source geometry (low segment counts; everything is baked from these) ---------- */
 const UNIT_BOX = new BoxGeometry(1, 1, 1);
 const UNIT_CYLINDER = new CylinderGeometry(0.5, 0.5, 1, 7);
-const UNIT_DISC = new CylinderGeometry(0.5, 0.5, 1, 14);
+const UNIT_DISC = new CylinderGeometry(0.5, 0.5, 1, 10);
 const UNIT_PYRAMID = new ConeGeometry(Math.SQRT1_2, 1, 4);
 const UNIT_SPHERE = new SphereGeometry(0.5, 8, 5);
 const UNIT_PLANE = new PlaneGeometry(1, 1);
@@ -72,11 +78,11 @@ const PALM_FROND = new ConeGeometry(0.5, 1, 4);
 const MAT = {
   sand: new MeshLambertMaterial({ color: SAND }),
   /** Ground plane with baked per-vertex dune shading. */
-  dunes: new MeshLambertMaterial({ color: '#ffffff', vertexColors: true }),
+  dunes: new MeshBasicMaterial({ vertexColors: true }),
   /** Hard offset "drop shadow" discs, opaque so there is no transparency pass. */
-  shade: new MeshLambertMaterial({ color: SHADE }),
+  shade: new MeshBasicMaterial({ color: new Color(SHADE).multiplyScalar(BAKED_LIGHT) }),
   /** Chunky ink outline: back faces of a slightly inflated copy of the shape. */
-  ink: new MeshLambertMaterial({ color: INK, side: BackSide }),
+  ink: new MeshBasicMaterial({ color: INK, side: BackSide }),
   path: new MeshLambertMaterial({ color: SAND_PATH }),
   stoneLight: new MeshLambertMaterial({ color: STONE_LIGHT, flatShading: true }),
   stone: new MeshLambertMaterial({ color: STONE, flatShading: true }),
@@ -111,7 +117,7 @@ function containsPoint(rect: RectXZ, x: number, z: number): boolean {
 type Vec3 = readonly [number, number, number];
 
 class Baker {
-  private readonly parts = new Map<MeshLambertMaterial, BufferGeometry[]>();
+  private readonly parts = new Map<Material, BufferGeometry[]>();
   private readonly helper = new Object3D();
   private readonly parent = new Matrix4();
 
@@ -130,14 +136,14 @@ class Baker {
   /** When true, `place`/`box` also emit an inflated back-face copy into the ink bucket. */
   outlines = false;
 
-  place(source: BufferGeometry, material: MeshLambertMaterial, position: Vec3, scale: Vec3, rotation: Vec3 = [0, 0, 0], outline = this.outlines): void {
+  place(source: BufferGeometry, material: Material, position: Vec3, scale: Vec3, rotation: Vec3 = [0, 0, 0], outline = this.outlines): void {
     this.push(source, material, position, scale, rotation);
-    if (outline) {
+    if (outline && Math.max(...scale) >= OUTLINE_MIN_SIZE) {
       this.push(source, MAT.ink, position, [scale[0] + OUTLINE, scale[1] + OUTLINE, scale[2] + OUTLINE], rotation);
     }
   }
 
-  private push(source: BufferGeometry, material: MeshLambertMaterial, position: Vec3, scale: Vec3, rotation: Vec3): void {
+  private push(source: BufferGeometry, material: Material, position: Vec3, scale: Vec3, rotation: Vec3): void {
     this.helper.position.set(...position);
     this.helper.rotation.set(...rotation);
     this.helper.scale.set(...scale);
@@ -167,7 +173,7 @@ class Baker {
     for (let i = 0; i < normals.count; i += 1) {
       n.set(normals.getX(i), normals.getY(i), normals.getZ(i));
       const light = Math.min(1, Math.max(0, n.dot(SUN) * 1.2 + 0.15));
-      c.copy(shade).lerp(lit, light);
+      c.copy(shade).lerp(lit, light).multiplyScalar(BAKED_LIGHT);
       colors[i * 3] = c.r;
       colors[i * 3 + 1] = c.g;
       colors[i * 3 + 2] = c.b;
@@ -177,14 +183,14 @@ class Baker {
     if (outline) this.push(source, MAT.ink, position, [scale[0] + OUTLINE, scale[1] + OUTLINE, scale[2] + OUTLINE], rotation);
   }
 
-  add(material: MeshLambertMaterial, geometry: BufferGeometry): void {
+  add(material: Material, geometry: BufferGeometry): void {
     const list = this.parts.get(material);
     if (list) list.push(geometry);
     else this.parts.set(material, [geometry]);
   }
 
   /** Axis-aligned box whose base sits at y (not centered) so stacking is easy to reason about. */
-  box(x: number, y: number, z: number, sx: number, sy: number, sz: number, material: MeshLambertMaterial, rotationY = 0, outline = this.outlines): void {
+  box(x: number, y: number, z: number, sx: number, sy: number, sz: number, material: Material, rotationY = 0, outline = this.outlines): void {
     this.place(UNIT_BOX, material, [x, y + sy / 2, z], [sx, sy, sz], [0, rotationY, 0], outline);
   }
 
@@ -194,8 +200,8 @@ class Baker {
     this.place(UNIT_DISC, MAT.shade, [x - rx * 0.22, y + 0.012, z - rz * 0.22], [rx * 2.2, 0.01, rz * 2.2], [0, 0, 0], false);
   }
 
-  bake(): { material: MeshLambertMaterial; geometry: BufferGeometry }[] {
-    const out: { material: MeshLambertMaterial; geometry: BufferGeometry }[] = [];
+  bake(): { material: Material; geometry: BufferGeometry }[] {
+    const out: { material: Material; geometry: BufferGeometry }[] = [];
     for (const [material, list] of this.parts) {
       const merged = mergeGeometries(list, false);
       for (const part of list) part.dispose();
@@ -229,7 +235,7 @@ function bakeGround(b: Baker, { bounds, roads }: Pick<CityDefinition, 'bounds' |
     // ripples out there (the playable area keeps the subtle shading so pads and props stay legible).
     const distance = Math.min(1, Math.max(0, (Math.hypot(x, y) - half * 0.8) / (half * 1.6)));
     const shade = 1 + ripple * (0.07 + distance * 0.1) + (rng.next() - 0.5) * 0.04;
-    tint.copy(sand).multiplyScalar(shade).lerp(haze, distance * distance);
+    tint.copy(sand).multiplyScalar(shade).lerp(haze, distance * distance).multiplyScalar(BAKED_LIGHT);
     colors[i * 3] = tint.r;
     colors[i * 3 + 1] = tint.g;
     colors[i * 3 + 2] = tint.b;
@@ -261,7 +267,7 @@ function bakeGround(b: Baker, { bounds, roads }: Pick<CityDefinition, 'bounds' |
   }
 }
 
-function pad(b: Baker, x: number, z: number, radius: number, material: MeshLambertMaterial): void {
+function pad(b: Baker, x: number, z: number, radius: number, material: Material): void {
   b.place(UNIT_DISC, material, [x, 0.04, z], [radius * 2, 0.08, radius * 2], [0, 0, 0], false);
 }
 
@@ -643,7 +649,7 @@ function bakeDistricts(b: Baker, definition: CityDefinition, seed: number): void
   const wind = createRng(hashSeed(seed, definition.id, 'wind'));
   const [bx, bz] = centerOf(definition.bounds);
   const [bw, bd] = sizeOf(definition.bounds);
-  for (const [x, z] of scatterIn({ center: [bx, bz], radius: Math.hypot(bw, bd) / 2 }, definition, keepOut, wind, 40)) {
+  for (const [x, z] of scatterIn({ center: [bx, bz], radius: Math.hypot(bw, bd) / 2 }, definition, keepOut, wind, 24)) {
     b.place(UNIT_PLANE, MAT.path, [x, 0.022, z], [5 + wind.next() * 7, 0.35, 1], [-Math.PI / 2, 0, 0.5 + wind.next() * 0.3], false);
   }
   for (const district of definition.districts) {
@@ -778,7 +784,7 @@ export function GizaScene({ definition, seed, quality }: CitySceneProps) {
 
   // Independent seeds per group: rebuilding one group never reshuffles another.
   const rocks = useMemo(
-    () => scatterRocks(definition, createRng(hashSeed(seed, definition.id, 'rocks')), low ? 0 : 60),
+    () => scatterRocks(definition, createRng(hashSeed(seed, definition.id, 'rocks')), low ? 0 : 48),
     [definition, seed, low],
   );
 
