@@ -37,7 +37,15 @@ export function GlobeHUD({ model, actions }: GlobeHUDProps) {
           )}
         </div>
 
-        <ArcadeButton square tone="ink" onClick={actions.onPause} title="Pause" aria-label="Pause" icon={<PauseIcon size={16} />} />
+        <ArcadeButton
+          square
+          tone="ink"
+          className="pointer-events-auto"
+          onClick={actions.onPause}
+          title="Pause"
+          aria-label="Pause"
+          icon={<PauseIcon size={16} />}
+        />
       </header>
 
       <footer className="w-full max-w-2xl mx-auto pointer-events-auto">
