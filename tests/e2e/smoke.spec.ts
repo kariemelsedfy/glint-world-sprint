@@ -1,4 +1,7 @@
 import { expect, test } from '@playwright/test';
+import { TRAVEL_TIMEOUT_MS } from './support/game';
+
+test.describe.configure({ timeout: 120_000 });
 
 /** Bootstrap smoke coverage. A7 owns the full e2e suite. */
 test('boots into the menu with a sized canvas and no page errors', async ({ page }) => {
@@ -27,6 +30,6 @@ test('runs menu → briefing → globe → Paris', async ({ page }) => {
   await page.getByRole('button', { name: 'Go' }).click();
   await page.getByRole('button', { name: /Fly to Paris/ }).click();
 
-  await expect(page.getByRole('button', { name: 'Globe' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('button', { name: 'Globe' })).toBeVisible({ timeout: TRAVEL_TIMEOUT_MS });
   await expect(page.getByText(/WASD or arrow keys/)).toBeVisible();
 });

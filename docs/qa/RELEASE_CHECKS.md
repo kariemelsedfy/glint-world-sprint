@@ -45,12 +45,13 @@ Release check failed (9):
 
 (Message wording was tidied afterwards to "forbidden file (…)" / "credential-shaped string (…)"; the rules are unchanged.) Re-running `package:itch` then `check:release` on the real build passed.
 
-## Results on the graybox build
+## Results on integrated `main` @ `656af1d`
 
 ```
-ZIP        277.3 KiB (3 files) budget 25.00 MiB
-JS         972.6 KiB raw, 268.5 KiB gzip -9 (budget 1.46 MiB / 400.0 KiB)
-CSS        7.3 KiB gzip -9 (budget 40.0 KiB)
-Scanned    3 text files in the ZIP, 113 tracked source files
+ZIP        305.3 KiB (3 files) budget 25.00 MiB
+SHA-256    94379e96c70faa659e8df62a8235c7c1782d8dbddb591418d924a4897495e4c7
+JS         1.04 MiB raw, 295.3 KiB gzip -9 (budget 1.46 MiB / 400.0 KiB)
+CSS        8.4 KiB gzip -9 (budget 40.0 KiB)
+Scanned    3 text files in the ZIP, 173 tracked source files
 Release check passed.
 ```

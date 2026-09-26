@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
-import { PLAYER_RADIUS, PLAYER_SPEED } from '@/shared/contracts';
+import { PICKUP_RADIUS, PLAYER_RADIUS, PLAYER_SPEED } from '@/shared/contracts';
 import type { CityId, LevelId, RectXZ, TargetId } from '@/shared/contracts';
 
 export interface OracleObjective {
@@ -112,15 +112,21 @@ export function hud(page: Page) {
   };
 }
 
+/**
+ * Travel animates on wall-clock time (~1.8 s), but on a loaded box running SwiftShader the city
+ * scene can take tens of seconds to present its first frames. Generous, still bounded.
+ */
+export const TRAVEL_TIMEOUT_MS = 60_000;
+
 export async function flyTo(page: Page, cityId: CityId): Promise<void> {
   const label = city(cityId).label;
   await page.getByRole('button', { name: `Fly to ${label}` }).click();
-  await expect(page.getByRole('button', { name: 'Globe', exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('button', { name: 'Globe', exact: true })).toBeVisible({ timeout: TRAVEL_TIMEOUT_MS });
 }
 
 export async function returnToGlobe(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Globe', exact: true }).click();
-  await expect(page.getByRole('button', { name: /^Fly to / }).first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('button', { name: /^Fly to / }).first()).toBeVisible({ timeout: TRAVEL_TIMEOUT_MS });
 }
 
 export function mapSvg(page: Page, cityId: CityId): Locator {
@@ -312,32 +318,136 @@ async function isCollected(page: Page, title: string): Promise<boolean> {
 
 const AXIS_KEYS = { x: ['ArrowLeft', 'ArrowRight'], z: ['ArrowUp', 'ArrowDown'] } as const;
 const ARRIVAL_TOLERANCE = 0.9;
+/** Route legs are planned with 0.9 of blocker clearance; a wider miss is recovered by re-planning. */
+const MAX_ARRIVAL_TOLERANCE = 2.1;
+/** Upper bound on how far the player may keep moving after a key release (latency + deceleration). */
+const MAX_CARRY = 6;
+/** Stop walking this far inside the pickup radius so the collector's own frame sees the overlap. */
+const PICKUP_MARGIN = 0.5;
+const WALK_DEADLINE_MS = 300_000;
+const COLLECT_POLL_MS = 20_000;
+const MAX_HOLD_MS = 8_000;
+/** Mirrors the Player's frame-delta clamp (1/20 s): slower frames move less per wall-clock second. */
+const PLAYER_MAX_FRAME_S = 1 / 20;
+const MIN_PROGRESS = 0.15;
+const MAX_STALLS = 8;
+
+/** Median requestAnimationFrame interval over a few frames, i.e. how fast the app is really ticking. */
+export async function measureFrameMs(page: Page, frames = 6): Promise<number> {
+  return page.evaluate(
+    (count) =>
+      new Promise<number>((done) => {
+        const deltas: number[] = [];
+        let last = -1;
+        const tick = (now: number) => {
+          if (last >= 0) deltas.push(now - last);
+          last = now;
+          if (deltas.length >= count) {
+            deltas.sort((a, b) => a - b);
+            done(deltas[Math.floor(deltas.length / 2)]!);
+          } else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+    frames,
+  );
+}
+
+function expectedUnitsPerMs(frameMs: number): number {
+  const frameS = Math.max(frameMs, 1) / 1000;
+  return (PLAYER_SPEED * Math.min(frameS, PLAYER_MAX_FRAME_S)) / frameS / 1000;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function along(position: readonly [number, number], axis: Leg['axis']): number {
+  return axis === 'x' ? position[0] : position[1];
+}
 
 /**
- * Walks to an objective with the arrow keys, closing the loop by reading the player dot from the
- * map overlay between key holds. Returns once the objective is collected.
+ * Walks to an objective with the arrow keys and returns once it is collected. Closed loop on the
+ * player's real XZ (read from the map marker). Each hold's displacement is modelled as
+ * `carry + rate * holdMs`: `rate` starts from the measured frame rate and `carry` (input latency plus
+ * deceleration, which grows as frames get slower) is learned from what every hold actually moved.
+ * Holds that do not move re-measure and re-plan; a leg the player keeps overshooting gets a wider,
+ * still bounded, tolerance. Stops only when the player is inside PICKUP_RADIUS, then requires the
+ * game to have collected it.
  */
 export async function walkToAndCollect(page: Page, objective: OracleObjective): Promise<void> {
   const cityId = objective.cityId;
-  const start = await readPlayer(page, cityId);
-  const legs = planRoute(cityId, start, objective.position);
+  const target = objective.position;
+  const deadline = Date.now() + WALK_DEADLINE_MS;
+  let frameMs = await measureFrameMs(page);
+  let rate = expectedUnitsPerMs(frameMs);
+  let carry = 0;
+  let legs: Leg[] | null = null;
+  let pending: { axis: Leg['axis']; from: number; sign: number; ms: number; wanted: number } | null = null;
+  let legId = '';
+  let overshoots = 0;
+  let stalls = 0;
+  let distance = Infinity;
+  let position: [number, number] = [NaN, NaN];
 
-  for (const leg of legs) {
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      if (await isCollected(page, objective.title)) return;
-      const position = await readPlayer(page, cityId);
-      const current = leg.axis === 'x' ? position[0] : position[1];
-      const delta = leg.value - current;
-      if (Math.abs(delta) <= ARRIVAL_TOLERANCE) break;
-      const key = AXIS_KEYS[leg.axis][delta > 0 ? 1 : 0];
-      const holdMs = Math.max(40, Math.min(6_000, (Math.abs(delta) / PLAYER_SPEED) * 1000 * 0.92));
-      await page.keyboard.down(key);
-      await page.waitForTimeout(holdMs);
-      await page.keyboard.up(key);
+  while (Date.now() < deadline) {
+    if (await isCollected(page, objective.title)) return;
+    position = await readPlayer(page, cityId);
+    distance = Math.hypot(position[0] - target[0], position[1] - target[1]);
+
+    if (pending) {
+      const moved = (along(position, pending.axis) - pending.from) * pending.sign;
+      if (Math.abs(moved) < MIN_PROGRESS) {
+        stalls += 1;
+        if (stalls > MAX_STALLS) break;
+        frameMs = await measureFrameMs(page);
+        rate = Math.min(rate, expectedUnitsPerMs(frameMs));
+        legs = null;
+      } else {
+        stalls = 0;
+        if (pending.ms >= frameMs * 6) rate = clamp((rate + Math.max(moved - carry, 0) / pending.ms) / 2, 0.0005, PLAYER_SPEED / 1000);
+        carry = clamp((carry + (moved - rate * pending.ms)) / 2, 0, MAX_CARRY);
+        if (moved > pending.wanted + ARRIVAL_TOLERANCE) overshoots += 1;
+      }
+      pending = null;
     }
+
+    if (distance <= PICKUP_RADIUS - PICKUP_MARGIN) break;
+
+    legs ??= planRoute(cityId, position, target);
+    const tolerance = Math.min(MAX_ARRIVAL_TOLERANCE, ARRIVAL_TOLERANCE + overshoots * 0.4);
+    while (legs.length > 1 && Math.abs(legs[0]!.value - along(position, legs[0]!.axis)) <= tolerance) legs.shift();
+    const leg = legs[0]!;
+    const id = `${legs.length}:${leg.axis}:${leg.value}`;
+    if (id !== legId) {
+      legId = id;
+      overshoots = 0;
+    }
+    const delta = leg.value - along(position, leg.axis);
+    if (Math.abs(delta) <= tolerance) {
+      legs = null;
+      stalls += 1;
+      if (stalls > MAX_STALLS) break;
+      continue;
+    }
+
+    const holdMs = clamp((Math.abs(delta) - carry) / rate, frameMs, MAX_HOLD_MS);
+    const sign = delta > 0 ? 1 : -1;
+    const key = AXIS_KEYS[leg.axis][sign > 0 ? 1 : 0];
+    pending = { axis: leg.axis, from: along(position, leg.axis), sign, ms: holdMs, wanted: Math.abs(delta) };
+    await page.keyboard.down(key);
+    await page.waitForTimeout(holdMs);
+    await page.keyboard.up(key);
+    // Let the explorer decelerate and the 100 ms store sync publish the final position.
+    await page.waitForTimeout(Math.max(150, frameMs * 4));
   }
 
-  await expect.poll(() => isCollected(page, objective.title), { timeout: 5_000 }).toBe(true);
+  await expect
+    .poll(() => isCollected(page, objective.title), {
+      timeout: COLLECT_POLL_MS,
+      message: `${objective.title} not collected; player at ${position.map((v) => v.toFixed(1)).join(',')}, ${distance.toFixed(2)} from target (stalls ${stalls})`,
+    })
+    .toBe(true);
 }
 
 export interface ResultBreakdown {
